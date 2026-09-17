@@ -1,0 +1,35 @@
+{
+    "Clients": {
+        "ConfigurationTimeoutMilliseconds": 30000,
+        "HandshakeTimeoutMilliseconds": 10000,
+        "IdleTimeoutMilliseconds": 30000,
+        "LoginTimeoutMilliseconds": 30000,
+        "MaximumClients": 1024,
+        "MaxPlayers": 20
+    },
+    "Logging": {
+        "Enabled": true,
+        "Level": "Info"
+    },
+    "Network": {
+        "Backend": "Automatic",
+        "BindAddress": "0.0.0.0",
+        "MaximumCommandQueueBytes": 67108864,
+        "MaximumCommandQueueEntries": 16384,
+        "MaximumConnections": 1024,
+        "MaximumEventQueueBytes": 67108864,
+        "MaximumEventQueueEntries": 16384,
+        "MaximumInboundBytesPerConnection": 2097152,
+        "MaximumOutboundBytesPerConnection": 2097152,
+        "MaximumTotalInboundEventBytes": 268435456,
+        "MaximumTotalOutboundBytes": 268435456,
+        "Port": 25565,
+        "ReceiveBufferSize": 65536
+    },
+    "Server": {
+        "Name": "Aurore"
+    },
+    "World": {
+        "ViewDistance": 10
+    }
+}

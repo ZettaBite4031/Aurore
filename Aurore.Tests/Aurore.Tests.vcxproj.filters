@@ -1,0 +1,31 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="ByteBufferTests.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="ProtocolConnectionTests.cpp" />
+    <ClCompile Include="NetworkTests.cpp" />
+    <ClCompile Include="NetworkLoopbackTests.cpp" />
+    <ClCompile Include="PacketCodecTests.cpp" />
+    <ClCompile Include="LoginRequestTests.cpp" />
+    <ClCompile Include="OfflineLoginStabilizationTests.cpp" />
+    <ClCompile Include="ProtocolPipelineTests.cpp" />
+    <ClCompile Include="ClientLifecycleTests.cpp" />
+    <ClCompile Include="ResourceLocationTests.cpp" />
+    <ClCompile Include="NbtTests.cpp" />
+    <ClCompile Include="RegistryTests.cpp" />
+    <ClCompile Include="RegistrySnapshotTests.cpp" />
+    <ClCompile Include="RegistryTagTests.cpp" />
+    <ClCompile Include="SyntheticRegistrySnapshotTests.cpp" />
+    <ClCompile Include="ServerDataFoundationTests.cpp" />
+    <ClCompile Include="ConfigurationProtocolTests.cpp" />
+    <ClCompile Include="ConfigurationSequenceTests.cpp" />
+    <ClCompile Include="ConfigurationRuntimeTests.cpp" />
+    <ClCompile Include="ConfigurationTests.cpp" />
+    <ClCompile Include="PacketFrameTests.cpp" />
+    <ClCompile Include="ProtocolSessionTests.cpp" />
+    <ClCompile Include="RegistryCompatibilityTests.cpp" />
+    <ClCompile Include="NetworkRegistryTests.cpp" />
+    <ClCompile Include="TickScheduleTests.cpp" />
+  </ItemGroup>
+</Project>

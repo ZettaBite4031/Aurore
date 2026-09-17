@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="ByteBufferTests.cpp" />
+    <ClCompile Include="ClientLifecycleTests.cpp" />
+    <ClCompile Include="ConfigurationTests.cpp" />
+    <ClCompile Include="ConfigurationProtocolTests.cpp" />
+    <ClCompile Include="ConfigurationRuntimeTests.cpp" />
+    <ClCompile Include="ConfigurationSequenceTests.cpp" />
+    <ClCompile Include="LoginRequestTests.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="NbtTests.cpp" />
+    <ClCompile Include="NetworkLoopbackTests.cpp" />
+    <ClCompile Include="NetworkRegistryTests.cpp" />
+    <ClCompile Include="NetworkTests.cpp" />
+    <ClCompile Include="OfflineLoginStabilizationTests.cpp" />
+    <ClCompile Include="PacketCodecTests.cpp" />
+    <ClCompile Include="PacketFrameTests.cpp" />
+    <ClCompile Include="ProtocolConnectionTests.cpp" />
+    <ClCompile Include="ProtocolPipelineTests.cpp" />
+    <ClCompile Include="ProtocolSessionTests.cpp" />
+    <ClCompile Include="RegistryCompatibilityTests.cpp" />
+    <ClCompile Include="RegistrySnapshotTests.cpp" />
+    <ClCompile Include="RegistryTagTests.cpp" />
+    <ClCompile Include="RegistryTests.cpp" />
+    <ClCompile Include="ResourceLocationTests.cpp" />
+    <ClCompile Include="ServerDataFoundationTests.cpp" />
+    <ClCompile Include="SyntheticRegistrySnapshotTests.cpp" />
+    <ClCompile Include="TickScheduleTests.cpp" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{b282a500-f52c-49ac-bfb2-56504cf4bc7c}</ProjectGuid>
+    <RootNamespace>AuroreTests</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(SolutionDir)Aurore.World\include;$(SolutionDir)Aurore.Network\src;$(SolutionDir)Aurore.Network\include;$(SolutionDir)Aurore.Protocol\include;$(SolutionDir)Aurore.Util\include;$(SolutionDir)Aurore.Core\include;$(SolutionDir)vendor\Sonnet\include;$(SolutionDir)vendor\googletest\googletest\include</AdditionalIncludeDirectories>
+      <LanguageStandard_C>stdclatest</LanguageStandard_C>
+    </ClCompile>
+    <Link>
+      <SubSystem>
+      </SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(SolutionDir)$(Platform)\$(Configuration);$(SolutionDir)vendor\Sonnet\build\$(Configuration);$(SolutionDir)vendor\googletest\build\lib\$(Configuration)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Ws2_32.lib;Mswsock.lib;Aurore.World.lib;Aurore.Network.lib;Aurore.Protocol.lib;Aurore.Util.lib;gtest.lib;sonnet.lib;Aurore.Core.lib</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <LanguageStandard_C>stdclatest</LanguageStandard_C>
+      <AdditionalIncludeDirectories>$(SolutionDir)Aurore.World\include;$(SolutionDir)Aurore.Network\src;$(SolutionDir)Aurore.Network\include;$(SolutionDir)Aurore.Protocol\include;$(SolutionDir)Aurore.Util\include;$(SolutionDir)Aurore.Core\include;$(SolutionDir)vendor\Sonnet\include;$(SolutionDir)vendor\googletest\googletest\include</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>
+      </SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>Ws2_32.lib;Mswsock.lib;Aurore.World.lib;Aurore.Network.lib;Aurore.Protocol.lib;Aurore.Util.lib;gtest.lib;sonnet.lib;Aurore.Core.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)$(Platform)\$(Configuration);$(SolutionDir)vendor\Sonnet\build\$(Configuration);$(SolutionDir)vendor\googletest\build\lib\$(Configuration)</AdditionalLibraryDirectories>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

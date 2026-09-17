@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="src\NetworkBackend.cpp" />
+    <ClCompile Include="src\NetworkManager.cpp" />
+    <ClCompile Include="src\windows\WindowsBackend.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\Aurore\Network\NetworkTypes.hpp" />
+    <ClInclude Include="include\Aurore\Network\NetworkManager.hpp" />
+    <ClInclude Include="src\NetworkBackend.hpp" />
+    <ClInclude Include="src\windows\WindowsBackend.hpp" />
+    <ClInclude Include="src\NetworkManagerTestAccess.hpp" />
+    <ClInclude Include="src\windows\WindowsTypes.hpp" />
+    <ClInclude Include="src\windows\WindowsUtils.hpp" />
+    <ClInclude Include="src\windows\WindowsBackendTest.hpp" />
+  </ItemGroup>
+</Project>
