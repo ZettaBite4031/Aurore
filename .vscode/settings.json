@@ -1,0 +1,34 @@
+{
+  "cmake.sourceDirectory": "${workspaceFolder}",
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": true,
+  "cmake.buildBeforeRun": true,
+  "cmake.ctest.testExplorerIntegrationEnabled": true,
+  "cmake.ctest.parallelJobs": 0,
+  "cmake.ctest.allowParallelJobs": true,
+  "cmake.ctestDefaultArgs": [
+    "--output-on-failure"
+  ],
+
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.cppStandard": "c++23",
+  "C_Cpp.default.intelliSenseMode": "${default}",
+
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+
+  "files.exclude": {
+    "**/out": true,
+    "**/.vs": true,
+    "**/Testing": true
+  },
+
+  "search.exclude": {
+    "**/out": true,
+    "**/.vs": true,
+    "**/vendor/**/build": true
+  },
+
+  "cmake.buildTask": true
+}

@@ -1,0 +1,103 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Aurore Server (Windows)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${input:serverPath}",
+      "cwd": "${input:serverDirectory}",
+      "args": [],
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "preLaunchTask": "Aurore: Build",
+      "presentation": {
+        "group": "aurore",
+        "order": 1
+      }
+    },
+    {
+      "name": "Aurore Tests (Windows)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${input:testsPath}",
+      "cwd": "${input:testsDirectory}",
+      "args": [],
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "preLaunchTask": "Aurore: Build",
+      "presentation": {
+        "group": "aurore",
+        "order": 2
+      }
+    },
+    {
+      "name": "Aurore Server (Linux)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${input:serverPath}",
+      "cwd": "${input:serverDirectory}",
+      "args": [],
+      "stopAtEntry": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "console": "integratedTerminal",
+      "preLaunchTask": "Aurore: Build",
+      "presentation": {
+        "group": "aurore",
+        "order": 3
+      }
+    },
+    {
+      "name": "Aurore Tests (Linux)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${input:testsPath}",
+      "cwd": "${input:testsDirectory}",
+      "args": [],
+      "stopAtEntry": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "console": "integratedTerminal",
+      "preLaunchTask": "Aurore: Build",
+      "presentation": {
+        "group": "aurore",
+        "order": 4
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "serverPath",
+      "type": "command",
+      "command": "cmake.launchTargetPath",
+      "args": {
+        "targetName": "aurore_server"
+      }
+    },
+    {
+      "id": "serverDirectory",
+      "type": "command",
+      "command": "cmake.launchTargetDirectory",
+      "args": {
+        "targetName": "aurore_server"
+      }
+    },
+    {
+      "id": "testsPath",
+      "type": "command",
+      "command": "cmake.launchTargetPath",
+      "args": {
+        "targetName": "aurore_tests"
+      }
+    },
+    {
+      "id": "testsDirectory",
+      "type": "command",
+      "command": "cmake.launchTargetDirectory",
+      "args": {
+        "targetName": "aurore_tests"
+      }
+    }
+  ]
+}

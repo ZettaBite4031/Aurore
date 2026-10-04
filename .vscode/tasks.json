@@ -1,0 +1,59 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Aurore: Configure",
+      "type": "cmake",
+      "command": "configure",
+      "preset": "${command:cmake.activeConfigurePresetName}",
+      "detail": "Configure using the active Aurore CMake preset."
+    },
+    {
+      "label": "Aurore: Build",
+      "type": "cmake",
+      "command": "build",
+      "preset": "${command:cmake.activeBuildPresetName}",
+      "dependsOn": [
+        "Aurore: Configure"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "detail": "Build the active Aurore CMake preset."
+    },
+    {
+      "label": "Aurore: Test",
+      "type": "cmake",
+      "command": "test",
+      "preset": "${command:cmake.activeTestPresetName}",
+      "dependsOn": [
+        "Aurore: Build"
+      ],
+      "detail": "Run the active Aurore CTest preset."
+    },
+    {
+      "label": "Aurore: Verify",
+      "dependsOn": [
+        "Aurore: Test"
+      ],
+      "dependsOrder": "sequence",
+      "detail": "Configure, build, and test the active Aurore preset."
+    },
+    {
+      "label": "Aurore: Clean",
+      "type": "cmake",
+      "command": "clean",
+      "preset": "${command:cmake.activeBuildPresetName}",
+      "detail": "Clean the active Aurore build tree."
+    },
+    {
+      "label": "Aurore: Clean Rebuild",
+      "type": "cmake",
+      "command": "cleanRebuild",
+      "preset": "${command:cmake.activeBuildPresetName}",
+      "group": "build",
+      "detail": "Clean and rebuild the active Aurore preset."
+    }
+  ]
+}
