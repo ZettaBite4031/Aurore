@@ -2,7 +2,7 @@
   "cmake.sourceDirectory": "${workspaceFolder}",
   "cmake.useCMakePresets": "always",
   "cmake.configureOnOpen": true,
-  "cmake.buildBeforeRun": true,
+  "cmake.buildBeforeRun": false,
   "cmake.ctest.testExplorerIntegrationEnabled": true,
   "cmake.ctest.parallelJobs": 0,
   "cmake.ctest.allowParallelJobs": true,

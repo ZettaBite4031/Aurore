@@ -10,8 +10,8 @@
 #include <sys/epoll.h>
 
 namespace Aurore::Network::Detail::Linux {
-    inline constexpr std::size_t WorkerEventCapacity{ 64 };
-    inline constexpr int WaitIndefinitely{ -1 };
+	inline constexpr std::size_t WorkerEventCapacity{ 64 };
+	inline constexpr int WaitIndefinitely{ -1 };
 
-    using WorkerEventBuffer = std::array<epoll_event, WorkerEventCapacity>;
+	using WorkerEventBuffer = std::array<epoll_event, WorkerEventCapacity>;
 }
