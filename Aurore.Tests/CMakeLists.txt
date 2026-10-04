@@ -29,10 +29,9 @@ set(
     TickScheduleTests.cpp
 )
 
-# These two files currently contain Winsock/IOCP-specific fixtures. The common
-# network library itself is still compiled on Linux. When the epoll backend is
-# implemented, split the portable NetworkTests coverage from the IOCP-internal
-# cases and make NetworkLoopbackTests use a platform-neutral client harness.
+# IOCP backend internals and the current loopback client fixture are
+# Windows-specific. Platform-neutral network contract tests remain in
+# NetworkTests.cpp and run on every supported build platform.
 if(AURORE_NETWORK_BACKEND_IOCP)
     list(
         APPEND
