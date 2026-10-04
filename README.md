@@ -2,99 +2,234 @@
 
 # Aurore
 
-### A from-scratch Minecraft-compatible server, built as a systems project
+### A from-scratch Minecraft-compatible server built as a systems project
 
-**Exact state · Clear ownership · Bounded resources · One bright vertical slice at a time**
+**Explicit ownership · Bounded resources · Deterministic state · Vertical slices**
 
-![C++](https://img.shields.io/badge/C%2B%2B-latest-00599C?style=flat&logo=cplusplus&logoColor=white)
-![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D4?style=flat&logo=windows11&logoColor=white)
-![Protocol](https://img.shields.io/badge/Protocol-774-4C9A2A?style=flat)
+[![Build and Test](https://github.com/ZettaBite4031/Aurore/actions/workflows/ci.yml/badge.svg)](https://github.com/ZettaBite4031/Aurore/actions/workflows/ci.yml)
+![C++23](https://img.shields.io/badge/C%2B%2B-23-00599C?style=flat&logo=cplusplus&logoColor=white)
+![Protocol 774](https://img.shields.io/badge/Minecraft%20Protocol-774-4C9A2A?style=flat)
 ![Status](https://img.shields.io/badge/Status-Pre--Alpha-D97706?style=flat)
 
-*A ZTS systems project.*
+**Windows x64 runtime · Linux x86-64 build target · CMake-first**
+
+*A ZettaTech Systems project.*
 
 </div>
 
 > [!WARNING]
-> Aurore is not playable yet. It is pre-alpha engineering work, not a production server.
+> Aurore is not playable yet. It is pre-alpha engineering work, not a production Minecraft server.
 
 > [!IMPORTANT]
 > Aurore is an independent project. It is not an official Minecraft product and is not approved by or associated with Mojang Studios or Microsoft.
 
+---
+
 ## What is Aurore?
 
-Aurore is a passion-driven attempt to build a fast, understandable Minecraft-compatible platform in modern C++. The current repository is the server half of that idea: transport, protocol, client lifecycle, registry data, and world ownership are being assembled into one coherent vertical slice instead of a pile of disconnected features.
+Aurore is an attempt to build a fast, understandable Minecraft-compatible platform in modern C++ without hiding the interesting systems work behind a large framework.
 
-The long-range Aurore name covers both sides of the experience:
+The server is being built as a sequence of narrow vertical slices. Networking, protocol state, client lifecycle, registry data, world ownership, and eventually gameplay are expected to meet at tested boundaries rather than grow as disconnected feature islands.
 
-- **Aurore Server** — the server runtime in this repository.
-- **Aurore Client** — a future custom client focused on performance, rendering, interface design, and modding.
+The long-range Aurore name covers two related products:
 
-They are related products, not one executable. The client is a future direction and has not been started here.
+| Product | Direction |
+|---|---|
+| **Aurore Server** | The server runtime in this repository |
+| **Aurore Client** | A future custom client focused on performance, rendering, interface design, accessibility, and modding |
 
-## Where it stands
+They share a product identity, not a runtime or executable. The client has not been started.
 
-The server currently has:
+## Current signal
 
-- a production Windows IOCP transport with bounded queues and resource accounting;
-- Status, offline Login, and Configuration state handling for protocol 774;
-- explicit Core-owned identity admission, lifecycle transitions, and timeouts;
+```text
+Build system        CMake
+Language            C++23
+Protocol target     774 / Minecraft 1.21.11
+
+Windows x64
+  Build             ✓ Debug / Release
+  Tests             ✓ Debug / Release
+  Runtime backend   ✓ IOCP
+
+Linux x86-64
+  Build             ✓ Debug / Release
+  Tests             ✓ Debug / Release
+  Runtime backend   · epoll pending
+```
+
+Aurore currently provides:
+
+- a production Windows IOCP transport with bounded command/event queues and explicit resource accounting;
+- a platform-neutral network manager and backend contract prepared for additional native transports;
+- Status, offline Login, and Configuration handling for protocol 774;
+- Core-owned identity admission, client lifecycle transitions, and timeouts;
 - bounded packet, NBT, registry, tag, and snapshot infrastructure;
 - immutable registry generations and compatibility validation;
-- deterministic synthetic data for tests;
-- unit, component, backend, and real loopback tests;
-- Debug and Release Windows CI.
+- deterministic synthetic data for automated tests;
+- unit, component, protocol, network-contract, backend, and Windows loopback coverage;
+- four-way CI across Windows/Linux and Debug/Release.
 
-An unmodified 1.21.11 client can complete Handshake and offline Login and receive the Configuration sequence. It currently rejects Aurore's deliberately synthetic registry content before acknowledging Configuration. That is the active compatibility boundary.
+An unmodified Minecraft 1.21.11 client can complete Handshake and offline Login and receive Aurore's Configuration sequence. The current compatibility boundary is registry data: the deliberately synthetic bootstrap snapshot is not a complete vanilla registry set, so the client does not yet complete Configuration.
 
 No chunks, entities, persistence, gameplay, online authentication, compression, or public mod API exist yet.
 
-## Shape of the codebase
+## The shape of the system
+
+Aurore is organized around ownership.
+
+```text
+                       ┌─────────────────┐
+                       │  Aurore.Server  │
+                       │ composition     │
+                       └────────┬────────┘
+                                │
+                       ┌────────▼────────┐
+                       │   Aurore.Core   │
+                       │ runtime policy  │
+                       └───┬────────┬────┘
+                           │        │
+                  ┌────────▼───┐ ┌──▼────────────┐
+                  │ Protocol   │ │ World         │
+                  │ wire/state │ │ simulation    │
+                  └──────┬─────┘ └───────────────┘
+                         │
+                  ┌──────▼──────┐
+                  │ Network     │
+                  │ byte I/O    │
+                  └──────┬──────┘
+                         │
+                  ┌──────▼──────┐
+                  │ native OS   │
+                  │ backend     │
+                  └─────────────┘
+
+             Util supports the reusable value/data layer.
+```
 
 | Project | Owns |
 |---|---|
-| `Aurore.Server` | Executable entry point and composition |
+| `Aurore.Server` | Process entry point and top-level composition |
 | `Aurore.Core` | Runtime policy, client orchestration, identity, and snapshot publication |
-| `Aurore.Network` | Minecraft-agnostic byte transport and IOCP |
-| `Aurore.Protocol` | Framing, codecs, protocol state, and Configuration sequencing |
+| `Aurore.Network` | Minecraft-agnostic byte transport, queues, limits, and backend lifecycle |
+| `Aurore.Protocol` | Framing, codecs, protocol state, requests, and Configuration sequencing |
 | `Aurore.Util` | Byte primitives, UUIDs, NBT, registries, tags, and snapshots |
 | `Aurore.World` | World ownership and explicit tick phases |
-| `Aurore.Tests` | Unit, component, backend, and loopback verification |
+| `Aurore.Tests` | Unit, component, contract, backend, and loopback verification |
 
-The important dependency rule is simple: Network moves bytes, Protocol understands the wire, Core makes server decisions, and World owns simulation state.
+The dependency rule is intentionally plain:
+
+> **Network moves bytes. Protocol understands the wire. Core makes server decisions. World owns simulation state.**
+
+More detail lives in [Architecture](docs/ARCHITECTURE.md).
 
 ## Build it
+
+Aurore uses **CMake as the canonical build system**. Dependencies are pinned as Git submodules and participate directly in the CMake graph.
+
+Clone with submodules:
+
+```bash
+git clone --recurse-submodules https://github.com/ZettaBite4031/Aurore.git
+cd Aurore
+```
+
+### Linux
+
+Requirements:
+
+- x86-64 Linux;
+- CMake 3.25 or newer;
+- Ninja;
+- a C++23-capable GCC or Clang toolchain;
+- Git.
+
+Debug:
+
+```bash
+cmake --preset linux-debug
+cmake --build --preset linux-debug --parallel
+ctest --preset linux-debug
+```
+
+Or use the convenience wrapper:
+
+```bash
+./scripts/build.sh Debug
+```
+
+Release:
+
+```bash
+./scripts/build.sh Release
+```
+
+> [!NOTE]
+> Linux is currently a build-and-test target, not yet a functional server runtime. The native epoll network backend is the next portability milestone.
+
+### Windows
 
 Requirements:
 
 - Windows x64;
 - Visual Studio 2026 with the MSVC v145 C++ workload;
-- CMake and PowerShell;
-- Git with submodule support.
+- CMake;
+- PowerShell;
+- Git.
+
+Debug:
 
 ```powershell
-git clone --recurse-submodules https://github.com/ZettaBite4031/Aurore.git
-cd Aurore
+cmake --preset windows-debug
+cmake --build --preset windows-debug --parallel
+ctest --preset windows-debug
+```
+
+Or:
+
+```powershell
 ./scripts/build.ps1 -Configuration Debug
 ```
 
-The script builds pinned dependencies, builds `Aurore.slnx`, copies the required Sonnet runtime, and runs the test suite. Use `Release` for the release configuration. See [Development](docs/DEVELOPMENT.md) for the full workflow and source-archive setup.
+Use `Release` for the release configuration.
+
+See [Development](docs/DEVELOPMENT.md) for the complete build, test, preset, dependency, and contribution workflow.
 
 ## The next horizon
 
-The next product milestone is **First Light**: one vanilla client moves through Configuration, enters a deliberately tiny Play world, remains synchronized, and disconnects cleanly. The point is not broad gameplay. The point is a visible, testable end-to-end experience that proves every layer participates correctly.
+The product milestone remains **First Light**:
 
-See the [roadmap](docs/ROADMAP.md) for the boundary between the current cleanup baseline, First Light, and the future Aurore client.
+> One unmodified vanilla client completes Configuration, enters a deliberately tiny Play context, remains synchronized, and disconnects cleanly.
+
+Before returning to that path, Aurore is completing its Linux runtime portability baseline by implementing an epoll backend with the same observable transport contract as the existing IOCP backend.
+
+After that, work returns to complete protocol-774 registry data, Configuration convergence, and the minimum Play bootstrap.
+
+See the [Roadmap](docs/ROADMAP.md) for the broader milestone boundary.
+
+## Engineering character
+
+Aurore deliberately favors:
+
+- explicit ownership over shared mutable state;
+- typed subsystem boundaries over implicit coupling;
+- deterministic state publication over partially visible mutation;
+- bounded queues and retained memory;
+- visible execution order;
+- testable behavior over speculative abstraction;
+- a real second implementation before generalizing an interface.
+
+It is a systems project first. Performance matters, but predictable behavior and understandable ownership come before cleverness.
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Development](docs/DEVELOPMENT.md)
-- [Protocol and data](docs/PROTOCOL_AND_DATA.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Legal and provenance policy](docs/LEGAL_AND_PROVENANCE.md)
-- [Contributing](CONTRIBUTING.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [Architecture](docs/ARCHITECTURE.md) — subsystem ownership and runtime flow
+- [Development](docs/DEVELOPMENT.md) — building, testing, dependencies, and workflow
+- [Protocol and data](docs/PROTOCOL_AND_DATA.md) — protocol/data contracts and compatibility work
+- [Roadmap](docs/ROADMAP.md) — vertical slices and First Light
+- [Legal and provenance policy](docs/LEGAL_AND_PROVENANCE.md) — clean implementation boundaries
+- [Contributing](CONTRIBUTING.md) — contribution expectations
+- [Third-party notices](THIRD_PARTY_NOTICES.md) — dependency provenance and pins
 
 ## License
 
