@@ -11,7 +11,11 @@ indent_style = tab
 indent_size = 4
 tab_width = 4
 
-[*.{json,md,ps1,props,slnx,vcxproj,filters,yml,yaml}]
+[*.{json,md,ps1,props,slnx,vcxproj,filters,yml,yaml,cmake}]
+indent_style = space
+indent_size = 2
+
+[CMakeLists.txt]
 indent_style = space
 indent_size = 2
 
