@@ -11,6 +11,7 @@ set(
     ConfigurationSequenceTests.cpp
     LoginRequestTests.cpp
     NbtTests.cpp
+    NetworkTests.cpp
     NetworkRegistryTests.cpp
     OfflineLoginStabilizationTests.cpp
     PacketCodecTests.cpp
@@ -37,7 +38,7 @@ if(AURORE_NETWORK_BACKEND_IOCP)
         APPEND
         aurore_test_sources
 
-        NetworkTests.cpp
+        WindowsNetworkBackendTests.cpp
         NetworkLoopbackTests.cpp
     )
 endif()

@@ -160,7 +160,7 @@ namespace Aurore::Network {
 
 			m_Impl->Commands.Clear();
 			m_Impl->Events.Clear();
-#if defined(_DEBUG)
+#ifndef NDEBUG
 			const auto resources = m_Impl->Resources.GetSnapshot();
 			assert(resources.TotalOutboundBytes == 0 && resources.TotalInboundEventBytes == 0 && resources.ActiveConnections == 0);
 #endif
@@ -223,7 +223,7 @@ namespace Aurore::Network {
 			m_Impl->Events.Close();
 			m_Impl->Commands.Clear();
 			m_Impl->Events.Clear();
-#if defined(_DEBUG)
+#ifndef NDEBUG
 			const auto resources = m_Impl->Resources.GetSnapshot();
 			assert(resources.TotalOutboundBytes == 0 && resources.TotalInboundEventBytes == 0 && resources.ActiveConnections == 0 && resources.TrackedConnections == 0);
 #endif
