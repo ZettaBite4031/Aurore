@@ -1,0 +1,112 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-debug",
+      "displayName": "Windows x64 Debug",
+      "generator": "Visual Studio 18 2026",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/out/build/windows-debug",
+      "cacheVariables": {
+        "AURORE_BUILD_TESTS": "ON",
+        "AURORE_ALLOW_MISSING_PLATFORM_BACKEND": "OFF"
+      }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows x64 Release",
+      "generator": "Visual Studio 18 2026",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/out/build/windows-release",
+      "cacheVariables": {
+        "AURORE_BUILD_TESTS": "ON",
+        "AURORE_ALLOW_MISSING_PLATFORM_BACKEND": "OFF"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux x86-64 Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/linux-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AURORE_BUILD_TESTS": "ON",
+        "AURORE_ALLOW_MISSING_PLATFORM_BACKEND": "ON"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux x86-64 Release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/linux-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "AURORE_BUILD_TESTS": "ON",
+        "AURORE_ALLOW_MISSING_PLATFORM_BACKEND": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "configuration": "Release"
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
