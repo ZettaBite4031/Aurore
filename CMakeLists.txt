@@ -117,13 +117,9 @@ if(AURORE_PLATFORM_WINDOWS)
     set(AURORE_NETWORK_BACKEND_IOCP ON)
 endif()
 
-# Linux intentionally has no production backend during the portability
-# baseline. Once the epoll backend exists, enable it here and remove
-# AURORE_ALLOW_MISSING_PLATFORM_BACKEND from the Linux presets.
-#
-# if(AURORE_PLATFORM_LINUX)
-#     set(AURORE_NETWORK_BACKEND_EPOLL ON)
-# endif()
+if(AURORE_PLATFORM_LINUX)
+    set(AURORE_NETWORK_BACKEND_EPOLL ON)
+endif()
 
 set(aurore_network_backend_count 0)
 
