@@ -10,12 +10,14 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 
 namespace Aurore::Network::Detail {
 	[[nodiscard]] std::unique_ptr<NetworkBackend> CreateLinuxEpollBackend();
@@ -36,22 +38,27 @@ namespace Aurore::Network::Detail::Linux {
 	void Shutdown() noexcept override;
 
 	private:
-		/*
-		 * StartWorker() is intentionally separated from Start().
-		 * Step 2 will create and register the listening socket first,
-		 * then start the worker and return the real bound endpoint.
-		 */
+		[[nodiscard]] NetworkResult<NetworkEndpoint> CreateListener();
 		[[nodiscard]] NetworkResult<void> StartWorker();
 
 		void StopWorker() noexcept;
 		void WorkerMain() noexcept;
 
-		void HandleWorkerFailure(int error, std::string_view operation) noexcept;
+		void HandleListenerEvent(std::uint32_t events);
+		void AcceptConnections();
+		void HandleConnectionEvent(ConnectionId connection, std::uint32_t events);
 
+		[[nodiscard]] ConnectionId AllocateConnectioNId() noexcept;
+		void CloseConnection(ConnectionId connection, ConnectionCloseReason reason, std::string detail, bool abortive);
+		void BeginShutdown();
+
+		[[nodiscard]] QueuePushResult PushEvent(NetworkEvent event, NetworkResourceLedger::Reservation reservation = {});
+
+		void HandleWorkerFailure(int error, std::string_view operation) noexcept;
+		void HandleWorkerException(std::string_view message) noexcept;
 		void EmitFailure(NetworkError error, std::string message, bool fatal) noexcept;
 
 		void SignalStartup(std::optional<NetworkError> error) noexcept;
-
 		void SignalStartupFailureNoexcept() noexcept;
 
 		[[nodiscard]] bool IsStartupComplete() const noexcept;
@@ -64,6 +71,10 @@ namespace Aurore::Network::Detail::Linux {
 
 		UniqueFd m_Epoll;
 		UniqueFd m_CommandEvent;
+		UniqueFd m_Listener;
+
+		std::optional<NetworkEndpoint> m_BoundEndpoint;
+		std::unordered_map<ConnectionId, BackendConnection> m_Connections;
 
 		std::thread m_Worker;
 		std::atomic_bool m_StopRequested{ false };
@@ -75,6 +86,9 @@ namespace Aurore::Network::Detail::Linux {
 		std::optional<NetworkError> m_StartupError;
 
 		bool m_Initialized{ false };
+		bool m_ShuttingDown{ false };
 		bool m_WorkerFailureReported{ false };
+
+		std::uint64_t m_NextConnectionId{ 1 };
 	};
 }
