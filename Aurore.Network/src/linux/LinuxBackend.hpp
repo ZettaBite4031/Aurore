@@ -26,16 +26,20 @@ namespace Aurore::Network::Detail {
 namespace Aurore::Network::Detail::Linux {
 	class LinuxNetworkBackend final : public NetworkBackend {
 	public:
-	LinuxNetworkBackend() = default;
-	~LinuxNetworkBackend() noexcept override;
+		LinuxNetworkBackend() = default;
+		~LinuxNetworkBackend() noexcept override;
 
-	[[nodiscard]] NetworkResult<void> Initialize(const NetworkConfiguration& config, NetworkCommandQueue& commands, NetworkEventQueue& events, NetworkResourceLedger& resources) override;
+		[[nodiscard]] NetworkResult<void> Initialize(
+			const NetworkConfiguration& config,
+			NetworkCommandQueue& commands,
+			NetworkEventQueue& events,
+			NetworkResourceLedger& resources) override;
 
-	[[nodiscard]] NetworkResult<NetworkEndpoint> Start() override;
+		[[nodiscard]] NetworkResult<NetworkEndpoint> Start() override;
 
-	void NotifyCommandAvailable() noexcept override;
-	void Stop() noexcept override;
-	void Shutdown() noexcept override;
+		void NotifyCommandAvailable() noexcept override;
+		void Stop() noexcept override;
+		void Shutdown() noexcept override;
 
 	private:
 		[[nodiscard]] NetworkResult<NetworkEndpoint> CreateListener();
@@ -46,22 +50,44 @@ namespace Aurore::Network::Detail::Linux {
 
 		void HandleListenerEvent(std::uint32_t events);
 		void AcceptConnections();
-		void HandleConnectionEvent(ConnectionId connection, std::uint32_t events);
 
-		[[nodiscard]] ConnectionId AllocateConnectioNId() noexcept;
-		void CloseConnection(ConnectionId connection, ConnectionCloseReason reason, std::string detail, bool abortive);
+		void HandleConnectionEvent(ConnectionId connection, std::uint32_t events);
+		void ReceiveAvailable(ConnectionId connection);
+		void FlushOutbound(ConnectionId connection);
+
+		void DrainCommands();
+		void HandleCommand(SendCommand&& command);
+		void HandleCommand(const CloseAfterFlushCommand& command);
+		void HandleCommand(const CloseImmediatelyCommand& command);
+		void HandleCommand(const ResumeReceiveCommand& command);
+		void HandleCommand(const StopCommand& command);
+
+		[[nodiscard]] std::uint32_t BuildConnectionEvents(const BackendConnection& connection) const noexcept;
+		[[nodiscard]] bool UpdateConnectionInterest(ConnectionId connection);
+
+		void TryCompleteCloseAfterFlush(ConnectionId connection);
+
+		[[nodiscard]] ConnectionId AllocateConnectionId() noexcept;
+
+		void CloseConnection(
+			ConnectionId connection,
+			ConnectionCloseReason reason,
+			std::string detail,
+			bool abortive);
+
 		void BeginShutdown();
 
-		[[nodiscard]] QueuePushResult PushEvent(NetworkEvent event, NetworkResourceLedger::Reservation reservation = {});
+		[[nodiscard]] QueuePushResult PushEvent(
+			NetworkEvent event,
+			NetworkResourceLedger::Reservation reservation = {});
 
 		void HandleWorkerFailure(int error, std::string_view operation) noexcept;
 		void HandleWorkerException(std::string_view message) noexcept;
+
 		void EmitFailure(NetworkError error, std::string message, bool fatal) noexcept;
 
 		void SignalStartup(std::optional<NetworkError> error) noexcept;
 		void SignalStartupFailureNoexcept() noexcept;
-
-		[[nodiscard]] bool IsStartupComplete() const noexcept;
 
 		NetworkConfiguration m_Config;
 

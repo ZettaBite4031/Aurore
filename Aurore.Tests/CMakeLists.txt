@@ -10,7 +10,9 @@ set(
     ConfigurationRuntimeTests.cpp
     ConfigurationSequenceTests.cpp
     LoginRequestTests.cpp
+    NativeNetworkBackendTests.cpp
     NbtTests.cpp
+    NetworkLoopbackClient.hpp
     NetworkTests.cpp
     NetworkRegistryTests.cpp
     OfflineLoginStabilizationTests.cpp
@@ -29,16 +31,20 @@ set(
     TickScheduleTests.cpp
 )
 
-# IOCP backend internals and the current loopback client fixture are
-# Windows-specific. Platform-neutral network contract tests remain in
-# NetworkTests.cpp and run on every supported build platform.
 if(AURORE_NETWORK_BACKEND_IOCP)
     list(
         APPEND
         aurore_test_sources
 
+        NetworkLoopbackClient.Windows.cpp
         WindowsNetworkBackendTests.cpp
-        NetworkLoopbackTests.cpp
+    )
+elseif(AURORE_NETWORK_BACKEND_EPOLL)
+    list(
+        APPEND
+        aurore_test_sources
+
+        NetworkLoopbackClient.Linux.cpp
     )
 endif()
 

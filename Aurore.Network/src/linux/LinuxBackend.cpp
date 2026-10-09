@@ -4,12 +4,16 @@
 
 #include "LinuxBackend.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include <netdb.h>
 #include <sys/epoll.h>
@@ -27,23 +31,22 @@ namespace Aurore::Network::Detail::Linux {
 	}
 
 	NetworkResult<void> LinuxNetworkBackend::Initialize(const NetworkConfiguration& config, NetworkCommandQueue& commands, NetworkEventQueue& events, NetworkResourceLedger& resources) {
-		if (m_Initialized) {
+		if (m_Initialized)
 			return std::unexpected(NetworkError::AlreadyInitialized);
-		}
+
+		if (config.ReceiveBufferSize == 0 || config.ReceiveBufferSize > static_cast<std::size_t>(std::numeric_limits<ssize_t>::max()))
+			return std::unexpected(NetworkError::InvalidConfiguration);
 
 		UniqueFd epoll = CreateEpollInstance();
-		if (!epoll) {
+		if (!epoll)
 			return std::unexpected(NetworkError::BackendFailure);
-		}
 
 		UniqueFd command_event = CreateEventCounter();
-		if (!command_event) {
+		if (!command_event)
 			return std::unexpected(NetworkError::BackendFailure);
-		}
 
-		if (!AddEpollInterest(epoll.Get(), command_event.Get(), EPOLLIN, CommandEventToken)) {
+		if (!AddEpollInterest(epoll.Get(), command_event.Get(), EPOLLIN, CommandEventToken))
 			return std::unexpected(NetworkError::BackendFailure);
-		}
 
 		m_Config = config;
 		m_Commands = &commands;
@@ -52,33 +55,34 @@ namespace Aurore::Network::Detail::Linux {
 
 		m_Epoll = std::move(epoll);
 		m_CommandEvent = std::move(command_event);
+
 		m_NextConnectionId = 1;
+		m_ShuttingDown = false;
+		m_WorkerFailureReported = false;
 
 		m_StopRequested.store(false, std::memory_order_release);
 		m_Started.store(false, std::memory_order_release);
-		m_ShuttingDown = false;
-		m_WorkerFailureReported = false;
-		m_Initialized = true;
 
+		m_Initialized = true;
 		return {};
 	}
 
 	NetworkResult<NetworkEndpoint> LinuxNetworkBackend::Start() {
-		if (!m_Initialized) {
+		if (!m_Initialized)
 			return std::unexpected(NetworkError::NotInitialized);
-		}
 
-		if (m_Started.load(std::memory_order_acquire) || m_Worker.joinable()) {
+		if (m_Started.load(std::memory_order_acquire) || m_Worker.joinable())
 			return std::unexpected(NetworkError::AlreadyRunning);
-		}
 
 		auto listener_result = CreateListener();
-		if (!listener_result) return std::unexpected(listener_result.error());
+		if (!listener_result)
+			return std::unexpected(listener_result.error());
 
 		m_BoundEndpoint = *listener_result;
-		m_StopRequested.store(false, std::memory_order_release);
 		m_ShuttingDown = false;
 		m_WorkerFailureReported = false;
+
+		m_StopRequested.store(false, std::memory_order_release);
 
 		auto worker_result = StartWorker();
 		if (!worker_result) {
@@ -91,14 +95,8 @@ namespace Aurore::Network::Detail::Linux {
 	}
 
 	void LinuxNetworkBackend::NotifyCommandAvailable() noexcept {
-		if (!m_Started.load(std::memory_order_acquire)) {
-			return;
-		}
-
-		if (WakeEventCounter(m_CommandEvent.Get())) {
-			return;
-		}
-
+		if (!m_Started.load(std::memory_order_acquire)) return;
+		if (WakeEventCounter(m_CommandEvent.Get())) return;
 		m_StopRequested.store(true, std::memory_order_release);
 	}
 
@@ -107,7 +105,8 @@ namespace Aurore::Network::Detail::Linux {
 
 		try {
 			BeginShutdown();
-		} catch (...) {
+		}
+		catch (...) {
 			if (m_Resources != nullptr) {
 				for (const auto& [connection, state] : m_Connections) {
 					(void)state;
@@ -129,6 +128,7 @@ namespace Aurore::Network::Detail::Linux {
 		m_Connections.clear();
 		m_Listener.Reset();
 		m_BoundEndpoint.reset();
+
 		m_CommandEvent.Reset();
 		m_Epoll.Reset();
 
@@ -173,9 +173,9 @@ namespace Aurore::Network::Detail::Linux {
 		}
 
 		UniqueAddressInfo addresses(raw_addresses);
-
 		for (addrinfo* address = addresses.get(); address != nullptr; address = address->ai_next) {
 			UniqueFd candidate(::socket(address->ai_family, address->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC, address->ai_protocol));
+
 			if (!candidate) continue;
 			if (!SetReuseAddress(candidate.Get())) continue;
 			if (::bind(candidate.Get(), address->ai_addr, address->ai_addrlen) != 0) continue;
@@ -183,37 +183,40 @@ namespace Aurore::Network::Detail::Linux {
 
 			sockaddr_storage local_address{};
 			socklen_t local_length{ static_cast<socklen_t>(sizeof(local_address)) };
-			if (::getsockname(candidate.Get(), reinterpret_cast<sockaddr*>(&local_address), &local_length) != 0) continue;
+			if (::getsockname(candidate.Get(), reinterpret_cast<sockaddr*>(&local_address), &local_length) != 0)
+				continue;
 
 			auto endpoint = MakeNetworkEndpoint(reinterpret_cast<const sockaddr*>(&local_address), local_length);
 			if (!endpoint) continue;
-
-			if (!AddEpollInterest(m_Epoll.Get(), candidate.Get(), ListenerEvents, ListenerEventToken)) continue;
+			if (!AddEpollInterest(m_Epoll.Get(), candidate.Get(), ListenerEvents, ListenerEventToken))
+				continue;
 
 			m_Listener = std::move(candidate);
 			return *endpoint;
 		}
 
-		EmitFailure(NetworkError::BackendFailure, "Unable to bind and listen on " + m_Config.BindAddress + ":" + std::to_string(m_Config.Port), true);
+		EmitFailure(NetworkError::BackendFailure,
+			"Unable to bind and listen on "
+				+ m_Config.BindAddress
+				+ ":"
+				+ std::to_string(m_Config.Port),
+			true);
+
 		return std::unexpected(NetworkError::BackendFailure);
 	}
 
 	NetworkResult<void> LinuxNetworkBackend::StartWorker() {
-		if (!m_Initialized) {
+		if (!m_Initialized)
 			return std::unexpected(NetworkError::NotInitialized);
-		}
 
-		if (m_Started.load(std::memory_order_acquire) || m_Worker.joinable()) {
+		if (m_Started.load(std::memory_order_acquire) || m_Worker.joinable())
 			return std::unexpected(NetworkError::AlreadyRunning);
-		}
 
-		if (!m_Epoll || !m_CommandEvent) {
+		if (!m_Epoll || !m_CommandEvent || !m_Listener || !m_BoundEndpoint)
 			return std::unexpected(NetworkError::BackendFailure);
-		}
 
 		{
 			std::scoped_lock lock(m_StartupMutex);
-
 			m_StartupComplete = false;
 			m_StartupError.reset();
 		}
@@ -224,7 +227,8 @@ namespace Aurore::Network::Detail::Linux {
 
 		try {
 			m_Worker = std::thread(&LinuxNetworkBackend::WorkerMain, this);
-		} catch (...) {
+		}
+		catch (...) {
 			m_Started.store(false, std::memory_order_release);
 			return std::unexpected(NetworkError::BackendFailure);
 		}
@@ -244,9 +248,8 @@ namespace Aurore::Network::Detail::Linux {
 			if (!completed) {
 				startup_error = NetworkError::BackendFailure;
 				startup_timed_out = true;
-			} else {
-				startup_error = m_StartupError;
 			}
+			else startup_error = m_StartupError;
 #else
 			m_StartupCondition.wait(lock, [this] { return m_StartupComplete; });
 			startup_error = m_StartupError;
@@ -261,7 +264,8 @@ namespace Aurore::Network::Detail::Linux {
 #endif
 
 		if (startup_error.has_value()) {
-			if (m_Worker.joinable()) m_Worker.join();
+			if (m_Worker.joinable())
+				m_Worker.join();
 
 			m_Started.store(false, std::memory_order_release);
 			return std::unexpected(*startup_error);
@@ -277,7 +281,6 @@ namespace Aurore::Network::Detail::Linux {
 		}
 
 		m_StopRequested.store(true, std::memory_order_release);
-
 		[[maybe_unused]] const bool woke = WakeEventCounter(m_CommandEvent.Get());
 
 		m_Worker.join();
@@ -287,10 +290,9 @@ namespace Aurore::Network::Detail::Linux {
 	void LinuxNetworkBackend::WorkerMain() noexcept {
 		SignalStartup(std::nullopt);
 		WorkerEventBuffer events{};
-
 		while (!m_StopRequested.load(std::memory_order_acquire)) {
 			try {
-				const int count = ::epoll_wait(m_Epoll.Get(), events.data(), static_cast<int>(events.size()), WaitIndefinitely);
+				const int count = ::epoll_wait( m_Epoll.Get(), events.data(), static_cast<int>(events.size()), WaitIndefinitely);
 				if (count < 0) {
 					const int error = errno;
 					if (error == EINTR) continue;
@@ -298,8 +300,8 @@ namespace Aurore::Network::Detail::Linux {
 					break;
 				}
 
-				for (int i = 0; i < count; i++) {
-					const epoll_event& event = events[static_cast<std::size_t>(i)];
+				for (int index{ 0 }; index < count; ++index) {
+					const epoll_event& event = events[static_cast<std::size_t>(index)];
 					const std::uint64_t token = event.data.u64;
 
 					if (token == CommandEventToken) {
@@ -308,21 +310,26 @@ namespace Aurore::Network::Detail::Linux {
 							break;
 						}
 
-						/* Command dispatch arrives in step 3. */
+						DrainCommands();
+						if (m_StopRequested.load(std::memory_order_acquire)) break;
 						continue;
 					}
 
 					if (token == ListenerEventToken) {
 						HandleListenerEvent(event.events);
+						if (m_StopRequested.load(std::memory_order_acquire)) break;
 						continue;
 					}
 
 					HandleConnectionEvent(ConnectionId{ .Value = token }, event.events);
+					if (m_StopRequested.load(std::memory_order_acquire)) break;
 				}
-			} catch (const std::exception& ex) {
+			}
+			catch (const std::exception& ex) {
 				HandleWorkerException(ex.what());
 				break;
-			} catch (...) {
+			}
+			catch (...) {
 				HandleWorkerException("Unhandled non-standard exception in the epoll worker");
 				break;
 			}
@@ -334,7 +341,6 @@ namespace Aurore::Network::Detail::Linux {
 
 	void LinuxNetworkBackend::HandleListenerEvent(std::uint32_t events) {
 		if (m_ShuttingDown) return;
-
 		if ((events & (EPOLLERR | EPOLLHUP)) != 0) {
 			const int error = GetSocketError(m_Listener.Get());
 			HandleWorkerFailure(error != 0 ? error : EIO, "listener readiness");
@@ -348,7 +354,6 @@ namespace Aurore::Network::Detail::Linux {
 		while (!m_ShuttingDown && !m_StopRequested.load(std::memory_order_acquire)) {
 			sockaddr_storage remote_address{};
 			socklen_t remote_length{ static_cast<socklen_t>(sizeof(remote_address)) };
-
 			const int accepted_fd = ::accept4(m_Listener.Get(), reinterpret_cast<sockaddr*>(&remote_address), &remote_length, SOCK_NONBLOCK | SOCK_CLOEXEC);
 			if (accepted_fd < 0) {
 				const int error = errno;
@@ -359,7 +364,6 @@ namespace Aurore::Network::Detail::Linux {
 			}
 
 			UniqueFd accepted(accepted_fd);
-
 			if (m_Connections.size() >= m_Config.MaximumConnections) {
 				SetAbortiveClose(accepted.Get());
 				continue;
@@ -384,7 +388,7 @@ namespace Aurore::Network::Detail::Linux {
 				continue;
 			}
 
-			const ConnectionId connection = AllocateConnectioNId();
+			const ConnectionId connection = AllocateConnectionId();
 			auto [iterator, inserted] = m_Connections.try_emplace(connection, connection, std::move(accepted), *local_endpoint, *remote_endpoint);
 			if (!inserted) {
 				HandleWorkerFailure(EEXIST, "connection registration");
@@ -397,7 +401,7 @@ namespace Aurore::Network::Detail::Linux {
 				return;
 			}
 
-			if (!AddEpollInterest(m_Epoll.Get(), iterator->second.Socket.Get(), DormantConnectionEvents, connection.Value)) {
+			if (!AddEpollInterest(m_Epoll.Get(), iterator->second.Socket.Get(), BuildConnectionEvents(iterator->second), connection.Value)) {
 				const int error = errno;
 				m_Resources->DeactivateConnection(connection);
 				m_Connections.erase(iterator);
@@ -405,7 +409,12 @@ namespace Aurore::Network::Detail::Linux {
 				return;
 			}
 
-			const auto event_result = PushEvent(ConnectionOpenedEvent{ .Connection = connection, .LocalEndpoint = *local_endpoint, .RemoteEndpoint = *remote_endpoint });
+			const auto event_result = PushEvent(ConnectionOpenedEvent{
+					.Connection = connection,
+					.LocalEndpoint = *local_endpoint,
+					.RemoteEndpoint = *remote_endpoint,
+				});
+
 			if (event_result != QueuePushResult::Queued) {
 				CloseConnection(connection, ConnectionCloseReason::BackendFailure, "Network event queue could not accept a connection-opened event", true);
 				BeginShutdown();
@@ -413,32 +422,296 @@ namespace Aurore::Network::Detail::Linux {
 			}
 		}
 	}
-
 	void LinuxNetworkBackend::HandleConnectionEvent(ConnectionId connection, std::uint32_t events) {
-		const auto iterator = m_Connections.find(connection);
+		auto iterator = m_Connections.find(connection);
 
-		/* A stale epoll token is harmless even if Linux has reused the old fd.*/
+		/*
+			A queued epoll token may outlive the connection that
+			produced it. Stable connection IDs make that stale
+			event harmless even if Linux has reused the old fd.
+		*/
 		if (iterator == m_Connections.end()) return;
-
 		if ((events & EPOLLERR) != 0) {
 			const int error = GetSocketError(iterator->second.Socket.Get());
-			CloseConnection(connection, ConnectionCloseReason::TransportError, "SOcket readiness reported an error: " + FormatSystemError(error != 0 ? error : EIO), true);
+			CloseConnection(connection, ConnectionCloseReason::TransportError,
+				"Socket readiness reported an error: " + FormatSystemError(error != 0 ? error : EIO),
+				true);
+
 			return;
 		}
 
-		if ((events & (EPOLLRDHUP| EPOLLHUP)) != 0) {
-			CloseConnection(connection, ConnectionCloseReason::RemoteClosed, "Remote peer closed the connection", false);
+		/*
+			Inbound delivery is intentionally a decision boundary.
+			If EPOLLIN is present, process at most one receive event
+			and return. Any simultaneous write/hangup readiness stays
+			level-triggered and will be observed on the next wait.
+		*/
+		if ((events & EPOLLIN) != 0) {
+			ReceiveAvailable(connection);
+			return;
+		}
+
+		if ((events & EPOLLOUT) != 0) {
+			FlushOutbound(connection);
+			if (!m_Connections.contains(connection)) return;
+		}
+
+		if ((events & EPOLLHUP) != 0) {
+			iterator = m_Connections.find(connection);
+			if (iterator == m_Connections.end()) return;
+
+			/*
+				EPOLLHUP can be reported while unread stream data still
+				remains. Preserve the same decision-boundary behavior as
+				IOCP: drain that data first, then observe EOF on a later
+				receive. If receive delivery is paused, Core must resume it
+				before we inspect the stream again.
+			*/
+			if (iterator->second.CloseMode == ConnectionCloseMode::Open && !iterator->second.ReceivePaused)
+				ReceiveAvailable(connection);
 		}
 	}
 
-	ConnectionId LinuxNetworkBackend::AllocateConnectioNId() noexcept {
+	void LinuxNetworkBackend::ReceiveAvailable(ConnectionId connection) {
+		auto iterator = m_Connections.find(connection);
+		if (iterator == m_Connections.end()) return;
+		auto& state = iterator->second;
+		if (!state.Socket || state.CloseMode != ConnectionCloseMode::Open || state.ReceivePaused || m_ShuttingDown)
+			return;
+
+		std::vector<std::byte> buffer(m_Config.ReceiveBufferSize);
+		while (true) {
+			const ssize_t received = ::recv(state.Socket.Get(), buffer.data(), buffer.size(), 0);
+			if (received > 0) {
+				buffer.resize(static_cast<std::size_t>(received));
+				state.ReceivePaused = true;
+
+				if (!UpdateConnectionInterest(connection)) return;
+				if (m_Resources == nullptr) {
+					CloseConnection(connection, ConnectionCloseReason::BackendFailure, "Network resource ledger is unavailable", true);
+					BeginShutdown();
+					return;
+				}
+
+				auto reservation = m_Resources->ReserveInboundEvent(connection, buffer.size());
+				if (!reservation) {
+					if (reservation.error() == NetworkResourceLedger::ReserveError::InvalidConnection) {
+						CloseConnection(connection, ConnectionCloseReason::BackendFailure, "Inbound accounting referenced an inactive connection", true);
+						BeginShutdown();
+					}
+					else CloseConnection(connection, ConnectionCloseReason::InboundLimitExceeded, "Inbound event memory limit exceeded", true);
+					return;
+				}
+
+				const auto event_result = PushEvent(BytesReceivedEvent{ .Connection = connection, .Data = std::move(buffer), }, std::move(*reservation));
+				if (event_result != QueuePushResult::Queued) {
+					CloseConnection(connection, ConnectionCloseReason::BackendFailure,
+						event_result == QueuePushResult::Closed
+							? "Network event queue was closed"
+							: "Network event queue budget was exceeded",
+						true);
+
+					BeginShutdown();
+				}
+
+				return;
+			}
+
+			if (received == 0) {
+				CloseConnection(connection, ConnectionCloseReason::RemoteClosed, "Remote peer closed the connection", false);
+				return;
+			}
+
+			const int error = errno;
+			if (error == EINTR) continue;
+			if (error == EAGAIN || error == EWOULDBLOCK) return;
+			CloseConnection(connection, ConnectionCloseReason::TransportError, "recv failed: " + FormatSystemError(error), true);
+			return;
+		}
+	}
+
+	void LinuxNetworkBackend::FlushOutbound(ConnectionId connection) {
+		while (true) {
+			auto iterator = m_Connections.find(connection);
+			if (iterator == m_Connections.end()) return;
+			auto& state = iterator->second;
+			if (!state.Socket) return;
+			if (state.OutboundQueue.empty()) {
+				if (!UpdateConnectionInterest(connection))
+					return;
+
+				TryCompleteCloseAfterFlush(connection);
+				return;
+			}
+
+			auto& outbound = state.OutboundQueue.front();
+			const std::size_t remaining = outbound.Remaining();
+
+			if (remaining == 0) {
+				state.OutboundQueue.pop_front();
+				continue;
+			}
+
+			const auto bytes = outbound.Data.Bytes();
+			const std::size_t request_size = std::min(remaining, static_cast<std::size_t>(std::numeric_limits<ssize_t>::max()));
+			const ssize_t sent = ::send(state.Socket.Get(), bytes.data() + outbound.Offset, request_size, MSG_NOSIGNAL);
+
+			if (sent > 0) {
+				const std::size_t transferred = static_cast<std::size_t>(sent);
+				if (transferred > remaining) {
+					CloseConnection(connection, ConnectionCloseReason::BackendFailure, "send returned an invalid transfer length", true);
+					return;
+				}
+
+				outbound.Offset += transferred;
+				outbound.OutboundReservation.Release(transferred);
+
+				if (outbound.Remaining() == 0)
+					state.OutboundQueue.pop_front();
+
+				/*
+					For now, continue draining until the socket
+					would block. If profiling later shows worker
+					fairness problems, add a per-dispatch byte budget.
+				*/
+				continue;
+			}
+
+			if (sent == 0) {
+				CloseConnection(connection, ConnectionCloseReason::BackendFailure, "send returned zero bytes for a non-empty buffer", true);
+				return;
+			}
+
+			const int error = errno;
+			if (error == EINTR) continue;
+			if (error == EAGAIN || error == EWOULDBLOCK) {
+				[[maybe_unused]]
+				const bool updated = UpdateConnectionInterest(connection);
+				return;
+			}
+
+			CloseConnection(connection, ConnectionCloseReason::TransportError, "send failed: " + FormatSystemError(error), true);
+			return;
+		}
+	}
+
+	void LinuxNetworkBackend::DrainCommands() {
+		if (m_Commands == nullptr) return;
+		while (auto command = m_Commands->TryPop()) {
+			std::visit([this](auto&& value) { HandleCommand(std::forward<decltype(value)>(value)); }, std::move(*command));
+			if (m_StopRequested.load(std::memory_order_acquire)) break;
+		}
+	}
+
+	void LinuxNetworkBackend::HandleCommand(SendCommand&& command) {
+		if (m_ShuttingDown) return;
+		auto iterator = m_Connections.find(command.Connection);
+		if (iterator == m_Connections.end()) {
+			EmitFailure(NetworkError::InvalidConnectionId, "A send command referenced an unknown connection", false);
+			return;
+		}
+
+		auto& state = iterator->second;
+		if (!state.Socket || state.CloseMode != ConnectionCloseMode::Open)
+			return;
+
+		state.OutboundQueue.push_back(OutboundBuffer{
+				.Data = std::move(command.Data),
+				.OutboundReservation = std::move(command.OutboundReservation),
+			});
+
+		FlushOutbound(command.Connection);
+	}
+
+	void LinuxNetworkBackend::HandleCommand(const CloseAfterFlushCommand& command) {
+		auto iterator = m_Connections.find(command.Connection);
+		if (iterator == m_Connections.end()) return;
+		auto& state = iterator->second;
+		if (!state.Socket) return;
+
+		state.CloseMode = ConnectionCloseMode::AfterFlush;
+		state.RequestedCloseReason = command.Reason;
+		state.ReceivePaused = true;
+
+		if (!UpdateConnectionInterest(command.Connection))
+			return;
+
+		FlushOutbound(command.Connection);
+	}
+
+	void LinuxNetworkBackend::HandleCommand( const CloseImmediatelyCommand& command) {
+		CloseConnection(command.Connection, command.Reason, "Connection closed immediately by application", true);
+	}
+
+	void LinuxNetworkBackend::HandleCommand( const ResumeReceiveCommand& command) {
+		if (m_ShuttingDown) return;
+		auto iterator = m_Connections.find(command.Connection);
+		if (iterator == m_Connections.end()) return;
+		auto& state = iterator->second;
+		if (!state.Socket || state.CloseMode != ConnectionCloseMode::Open || !state.ReceivePaused)
+			return;
+
+		state.ReceivePaused = false;
+
+		if (!UpdateConnectionInterest(command.Connection))
+			return;
+	}
+
+	void LinuxNetworkBackend::HandleCommand(const StopCommand& command) {
+		(void)command;
+		BeginShutdown();
+	}
+
+	std::uint32_t LinuxNetworkBackend::BuildConnectionEvents( const BackendConnection& connection) const noexcept {
+		std::uint32_t events{ 0 };
+		if (!m_ShuttingDown && connection.CloseMode == ConnectionCloseMode::Open && !connection.ReceivePaused)
+			events |= EPOLLIN;
+
+		if (!connection.OutboundQueue.empty())
+			events |= EPOLLOUT;
+
+		/*
+			EPOLLERR and EPOLLHUP are reported by epoll regardless
+			of whether they are present in the requested mask.
+		*/
+		return events;
+	}
+
+	bool LinuxNetworkBackend::UpdateConnectionInterest( ConnectionId connection) {
+		auto iterator = m_Connections.find(connection);
+		if (iterator == m_Connections.end()) return false;
+		auto& state = iterator->second;
+		if (!state.Socket) return false;
+		if (ModifyEpollInterest(m_Epoll.Get(), state.Socket.Get(), BuildConnectionEvents(state), connection.Value))
+			return true;
+
+		const int error = errno;
+		HandleWorkerFailure(error, "client epoll interest update");
+		return false;
+	}
+
+	void LinuxNetworkBackend::TryCompleteCloseAfterFlush( ConnectionId connection) {
+		auto iterator = m_Connections.find(connection);
+		if (iterator == m_Connections.end()) return;
+		auto& state = iterator->second;
+		if (!state.Socket || state.CloseMode != ConnectionCloseMode::AfterFlush || !state.OutboundQueue.empty())
+			return;
+
+		CloseConnection(connection, state.RequestedCloseReason, "Connection closed after flushing outbound data", false);
+	}
+
+	ConnectionId LinuxNetworkBackend::AllocateConnectionId() noexcept {
 		while (true) {
 			ConnectionId candidate{ .Value = m_NextConnectionId++ };
+
 			if (m_NextConnectionId == 0 || m_NextConnectionId == ListenerEventToken)
 				m_NextConnectionId = 1;
 
-			if (!candidate || candidate.Value == ListenerEventToken) continue;
-			if (!m_Connections.contains(candidate)) return candidate;
+			if (!candidate || candidate.Value == ListenerEventToken)
+				continue;
+
+			if (!m_Connections.contains(candidate))
+				return candidate;
 		}
 	}
 
@@ -447,17 +720,37 @@ namespace Aurore::Network::Detail::Linux {
 		if (iterator == m_Connections.end()) return;
 
 		auto& state = iterator->second;
+		state.CloseMode = ConnectionCloseMode::Immediate;
+		state.ReceivePaused = true;
+
+		/*
+			Destroying queued outbound buffers releases any unsent
+			resource reservations before the connection is retired.
+		*/
+		state.OutboundQueue.clear();
+
 		if (state.Socket) {
-			[[maybe_unused]] const bool removed = RemoveEpollInterest(m_Epoll.Get(), state.Socket.Get());
-			if (m_Resources != nullptr) m_Resources->DeactivateConnection(connection);
-			if (abortive) SetAbortiveClose(state.Socket.Get());
+			[[maybe_unused]]
+			const bool removed = RemoveEpollInterest(m_Epoll.Get(), state.Socket.Get());
+			if (abortive)
+				SetAbortiveClose(state.Socket.Get());
+
 			state.Socket.Reset();
 		}
 
+		if (m_Resources != nullptr)
+			m_Resources->DeactivateConnection(connection);
+
 		QueuePushResult event_result{ QueuePushResult::Queued };
+
 		if (!state.CloseEventEmitted) {
 			state.CloseEventEmitted = true;
-			event_result = PushEvent(ConnectionClosedEvent{ .Connection = connection, .Reason = reason, .Detail = std::move(detail), });
+
+			event_result = PushEvent(ConnectionClosedEvent{
+					.Connection = connection,
+					.Reason = reason,
+					.Detail = std::move(detail),
+				});
 		}
 
 		m_Connections.erase(iterator);
@@ -468,7 +761,9 @@ namespace Aurore::Network::Detail::Linux {
 
 	void LinuxNetworkBackend::BeginShutdown() {
 		if (m_ShuttingDown) return;
+
 		m_ShuttingDown = true;
+		m_StopRequested.store(true, std::memory_order_release);
 		m_Listener.Reset();
 
 		while (!m_Connections.empty()) {
@@ -478,8 +773,13 @@ namespace Aurore::Network::Detail::Linux {
 	}
 
 	QueuePushResult LinuxNetworkBackend::PushEvent(NetworkEvent event, NetworkResourceLedger::Reservation reservation) {
-		if (m_Events == nullptr) return QueuePushResult::Closed;
-		return m_Events->Push(QueuedNetworkEvent{ .Event = std::move(event), .InboundReservation = std::move(reservation) });
+		if (m_Events == nullptr)
+			return QueuePushResult::Closed;
+
+		return m_Events->Push(QueuedNetworkEvent{
+				.Event = std::move(event),
+				.InboundReservation = std::move(reservation),
+			});
 	}
 
 	void LinuxNetworkBackend::HandleWorkerFailure(int error, std::string_view operation) noexcept {
@@ -488,13 +788,16 @@ namespace Aurore::Network::Detail::Linux {
 
 		if (!m_WorkerFailureReported) {
 			m_WorkerFailureReported = true;
+
 			try {
 				std::string message{ "Linux epoll worker failure in " };
 				message.append(operation);
+
 				if (error != 0) {
 					message += ": ";
 					message += FormatSystemError(error);
 				}
+
 				EmitFailure(NetworkError::BackendFailure, std::move(message), true);
 			}
 			catch (...) {}
@@ -512,12 +815,15 @@ namespace Aurore::Network::Detail::Linux {
 
 		if (!m_WorkerFailureReported) {
 			m_WorkerFailureReported = true;
+
 			try {
 				std::string detail{ "Unhandled exception in epoll worker" };
+
 				if (!message.empty()) {
 					detail += ": ";
 					detail.append(message);
 				}
+
 				EmitFailure(NetworkError::BackendFailure, std::move(detail), true);
 			}
 			catch (...) {}
@@ -531,21 +837,33 @@ namespace Aurore::Network::Detail::Linux {
 
 	void LinuxNetworkBackend::EmitFailure(NetworkError error, std::string message, bool fatal) noexcept {
 		if (m_Events == nullptr) return;
+
 		try {
-			[[maybe_unused]] const auto result = m_Events->Push(QueuedNetworkEvent{ .Event = NetworkFailureEvent{ .Error = error, .Message = std::move(message), .Fatal = fatal, }, .InboundReservation = {}, });
-		} catch (...) {}
+			[[maybe_unused]]
+			const auto result = PushEvent(
+				NetworkFailureEvent{
+					.Error = error,
+					.Message = std::move(message),
+					.Fatal = fatal,
+				});
+		}
+		catch (...) {}
 	}
 
 	void LinuxNetworkBackend::SignalStartup(std::optional<NetworkError> error) noexcept {
 		try {
 			{
 				std::scoped_lock lock(m_StartupMutex);
+
 				if (m_StartupComplete) return;
+
 				m_StartupError = error;
 				m_StartupComplete = true;
 			}
+
 			m_StartupCondition.notify_all();
-		} catch (...) {
+		}
+		catch (...) {
 			m_StopRequested.store(true, std::memory_order_release);
 			m_StartupCondition.notify_all();
 		}
@@ -554,8 +872,10 @@ namespace Aurore::Network::Detail::Linux {
 	void LinuxNetworkBackend::SignalStartupFailureNoexcept() noexcept {
 		try {
 			bool notify{ false };
+
 			{
 				std::scoped_lock lock(m_StartupMutex);
+
 				if (!m_StartupComplete) {
 					m_StartupError = NetworkError::BackendFailure;
 					m_StartupComplete = true;
@@ -564,18 +884,9 @@ namespace Aurore::Network::Detail::Linux {
 			}
 
 			if (notify) m_StartupCondition.notify_all();
-		} catch (...) {
+		}
+		catch (...) {
 			m_StartupCondition.notify_all();
 		}
 	}
-
-	bool LinuxNetworkBackend::IsStartupComplete() const noexcept {
-		try {
-			std::scoped_lock lock(m_StartupMutex);
-			return m_StartupComplete;
-		} catch (...) {
-			return false;
-		}
-	}
 }
-

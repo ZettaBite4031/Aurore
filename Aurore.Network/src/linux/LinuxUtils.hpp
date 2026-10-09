@@ -92,13 +92,11 @@ namespace Aurore::Network::Detail::Linux {
 		return ::epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event) == 0;
 	}
 
-	[[nodiscard]] inline bool ModifyEpollInterest(int epoll_fd, int fd, std::uint32_t events) noexcept {
+	[[nodiscard]] inline bool ModifyEpollInterest(int epoll_fd, int fd, std::uint32_t events, std::uint64_t token) noexcept {
 		if (epoll_fd < 0 || fd < 0) return false;
-
 		epoll_event event{};
 		event.events = events;
-		event.data.fd = fd;
-
+		event.data.u64 = token;
 		return ::epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &event) == 0;
 	}
 

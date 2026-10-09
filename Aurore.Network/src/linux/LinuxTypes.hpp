@@ -4,13 +4,15 @@
 #error LinuxTypes.hpp is only available on Linux.
 #endif
 
+#include "../NetworkBackend.hpp"
 #include "LinuxUtils.hpp"
 
-#include <Aurore/Network/NetworkTypes.hpp>
+#include <Aurore/Util/ByteBuffer.hpp>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <limits>
 #include <utility>
 
@@ -25,14 +27,24 @@ namespace Aurore::Network::Detail::Linux {
 
 	inline constexpr std::uint32_t ListenerEvents{ EPOLLIN };
 
-	/*
-	 * Client reads deliberately remain disabled during step 2.
-	 * Step 3 will add EPOLLIN and EPOLLOUT according to connection
-	 * backpressure and outbound queue state.
-	 */
-	inline constexpr std::uint32_t DormantConnectionEvents{ EPOLLRDHUP };
-
 	using WorkerEventBuffer = std::array<epoll_event, WorkerEventCapacity>;
+
+	enum class ConnectionCloseMode : std::uint8_t {
+		Open,
+		AfterFlush,
+		Immediate,
+	};
+
+	struct OutboundBuffer final {
+		Aurore::Util::ByteBuffer Data;
+		NetworkResourceLedger::Reservation OutboundReservation;
+		std::size_t Offset{ 0 };
+
+		[[nodiscard]] std::size_t Remaining() const noexcept {
+			const std::size_t size = Data.Size();
+			return Offset < size ? size - Offset : 0;
+		}
+	};
 
 	struct BackendConnection final {
 		BackendConnection(ConnectionId id, UniqueFd socket, NetworkEndpoint local, NetworkEndpoint remote)
@@ -47,6 +59,13 @@ namespace Aurore::Network::Detail::Linux {
 		UniqueFd Socket;
 		NetworkEndpoint LocalEndpoint;
 		NetworkEndpoint RemoteEndpoint;
+
+		std::deque<OutboundBuffer> OutboundQueue;
+
+		ConnectionCloseMode CloseMode{ ConnectionCloseMode::Open };
+		ConnectionCloseReason RequestedCloseReason{ ConnectionCloseReason::ApplicationRequested };
+
+		bool ReceivePaused{ false };
 		bool CloseEventEmitted{ false };
 	};
 }
