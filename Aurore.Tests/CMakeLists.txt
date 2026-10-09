@@ -13,6 +13,7 @@ set(
     NativeNetworkBackendTests.cpp
     NbtTests.cpp
     NetworkLoopbackClient.hpp
+    NetworkLoopbackTests.cpp
     NetworkTests.cpp
     NetworkRegistryTests.cpp
     OfflineLoginStabilizationTests.cpp

@@ -154,44 +154,4 @@ namespace {
 		EXPECT_TRUE(DrainEvents(m_Events).empty());
 	}
 
-	TEST(IocpBackendLifecycleTests, SupportsRepeatedStartStopCycle) {
-		NetworkManager manager;
-		ASSERT_TRUE(manager.Initialize(MakeTestConfig()).has_value());
-		EXPECT_TRUE(manager.IsInitialized());
-		EXPECT_FALSE(manager.IsRunning());
-
-		for (int cycle{ 0 }; cycle < 15; cycle++) {
-			SCOPED_TRACE(::testing::Message() << "Lifecycle cycle: " << cycle);
-			const auto start = manager.Start();
-			ASSERT_TRUE(start.has_value());
-			EXPECT_NE(start->Port, 0);
-			EXPECT_TRUE(manager.IsRunning());
-			const auto bound = manager.GetBoundEndpoint();
-			ASSERT_TRUE(bound.has_value());
-			EXPECT_EQ(*bound, *start);
-			manager.Stop();
-			EXPECT_TRUE(manager.IsInitialized());
-			EXPECT_FALSE(manager.IsRunning());
-			EXPECT_FALSE(manager.GetBoundEndpoint().has_value());
-			ExpectNoResources(NetworkManagerTestAccess::GetResourceSnapshot(manager));
-		}
-
-		manager.Shutdown();
-		EXPECT_FALSE(manager.IsInitialized());
-		EXPECT_FALSE(manager.IsRunning());
-		ExpectNoResources(NetworkManagerTestAccess::GetResourceSnapshot(manager));
-	}
-
-	TEST(IocpBackendLifecycleTests, ShutdownStopsRunningBackend) {
-		NetworkManager manager;
-		ASSERT_TRUE(manager.Initialize(MakeTestConfig()).has_value());
-		ASSERT_TRUE(manager.Start().has_value());
-		ASSERT_TRUE(manager.IsRunning());
-		manager.Shutdown();
-		EXPECT_FALSE(manager.IsRunning());
-		EXPECT_FALSE(manager.IsInitialized());
-		EXPECT_FALSE(manager.GetBoundEndpoint().has_value());
-		ExpectNoResources(NetworkManagerTestAccess::GetResourceSnapshot(manager));
-	}
-
 }

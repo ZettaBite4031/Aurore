@@ -26,6 +26,7 @@ namespace Aurore::Tests {
 		[[nodiscard]] bool IsReady() const noexcept;
 		[[nodiscard]] bool IsConnected() const noexcept;
 		[[nodiscard]] int GetLastError() const noexcept;
+		[[nodiscard]] bool IsLastErrorTransient() const noexcept;
 
 		[[nodiscard]] bool Connect(
 			std::string_view address,

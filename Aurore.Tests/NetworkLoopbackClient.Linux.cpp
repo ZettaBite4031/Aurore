@@ -182,6 +182,15 @@ namespace Aurore::Tests {
 			: ENOMEM;
 	}
 
+	bool LoopbackClient::IsLastErrorTransient() const noexcept {
+		if (m_Impl == nullptr)
+			return false;
+
+		return m_Impl->LastError == ETIMEDOUT
+			|| m_Impl->LastError == EAGAIN
+			|| m_Impl->LastError == EWOULDBLOCK;
+	}
+
 	bool LoopbackClient::Connect(
 		std::string_view address,
 		std::uint16_t port,

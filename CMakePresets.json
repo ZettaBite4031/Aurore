@@ -42,7 +42,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "AURORE_BUILD_TESTS": "ON",
-        "AURORE_ALLOW_MISSING_PLATFORM_BACKEND": "ON"
+        "AURORE_ALLOW_MISSING_PLATFORM_BACKEND": "OFF"
       }
     },
     {
@@ -53,7 +53,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "AURORE_BUILD_TESTS": "ON",
-        "AURORE_ALLOW_MISSING_PLATFORM_BACKEND": "ON"
+        "AURORE_ALLOW_MISSING_PLATFORM_BACKEND": "OFF"
       }
     }
   ],

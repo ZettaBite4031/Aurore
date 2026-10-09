@@ -11,7 +11,7 @@
 ![Protocol 774](https://img.shields.io/badge/Minecraft%20Protocol-774-4C9A2A?style=flat)
 ![Status](https://img.shields.io/badge/Status-Pre--Alpha-D97706?style=flat)
 
-**Windows x64 runtime · Linux x86-64 build target · CMake-first**
+**Windows x64 runtime · Linux x86-64 runtime · CMake-first**
 
 *A ZettaTech Systems project.*
 
@@ -55,19 +55,19 @@ Windows x64
 Linux x86-64
   Build             ✓ Debug / Release
   Tests             ✓ Debug / Release
-  Runtime backend   · epoll pending
+  Runtime backend   ✓ epoll
 ```
 
 Aurore currently provides:
 
-- a production Windows IOCP transport with bounded command/event queues and explicit resource accounting;
+- production Windows IOCP and Linux epoll transports with bounded command/event queues and explicit resource accounting;
 - a platform-neutral network manager and backend contract prepared for additional native transports;
 - Status, offline Login, and Configuration handling for protocol 774;
 - Core-owned identity admission, client lifecycle transitions, and timeouts;
 - bounded packet, NBT, registry, tag, and snapshot infrastructure;
 - immutable registry generations and compatibility validation;
 - deterministic synthetic data for automated tests;
-- unit, component, protocol, network-contract, backend, and Windows loopback coverage;
+- unit, component, protocol, network-contract, backend, and shared native loopback coverage;
 - four-way CI across Windows/Linux and Debug/Release.
 
 An unmodified Minecraft 1.21.11 client can complete Handshake and offline Login and receive Aurore's Configuration sequence. The current compatibility boundary is registry data: the deliberately synthetic bootstrap snapshot is not a complete vanilla registry set, so the client does not yet complete Configuration.
@@ -165,7 +165,7 @@ Release:
 ```
 
 > [!NOTE]
-> Linux is currently a build-and-test target, not yet a functional server runtime. The native epoll network backend is the next portability milestone.
+> Linux is a functional runtime target using the native epoll backend. Windows uses IOCP; both native transports are exercised through the same real-socket loopback behavior suite.
 
 ### Windows
 
@@ -201,9 +201,9 @@ The product milestone remains **First Light**:
 
 > One unmodified vanilla client completes Configuration, enters a deliberately tiny Play context, remains synchronized, and disconnects cleanly.
 
-Before returning to that path, Aurore is completing its Linux runtime portability baseline by implementing an epoll backend with the same observable transport contract as the existing IOCP backend.
+The Windows IOCP and Linux epoll backends now satisfy the same observable transport contract through shared real-socket tests.
 
-After that, work returns to complete protocol-774 registry data, Configuration convergence, and the minimum Play bootstrap.
+Work now returns to complete protocol-774 registry data, Configuration convergence, and the minimum Play bootstrap.
 
 See the [Roadmap](docs/ROADMAP.md) for the broader milestone boundary.
 

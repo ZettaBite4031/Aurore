@@ -88,8 +88,8 @@ namespace {
 
 		if (name == "Automatic") return NetworkBackendType::Automatic;
 		if (name == "Iocp") return NetworkBackendType::Iocp;
+		if (name == "Epoll") return NetworkBackendType::Epoll;
 		// For later implementation:
-		// if (name == "Epoll") return NetworkBackendType::Epoll;
 		// if (name == "Kqueue") return NetworkBackendType::Kqueue;
 
 		return std::nullopt;

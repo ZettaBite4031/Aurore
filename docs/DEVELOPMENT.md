@@ -5,7 +5,7 @@ Aurore uses CMake as its canonical build system. The same project graph is exerc
 The current portability boundary is deliberate:
 
 - **Windows x64** is a functional runtime target using the IOCP network backend.
-- **Linux x86-64** is a supported build-and-test target while the epoll backend is under development.
+- **Linux x86-64** is a functional runtime target using the epoll network backend.
 - **macOS** is represented in the platform/backend contract but is not currently a supported build or runtime target.
 
 ## Toolchain baseline
@@ -72,10 +72,10 @@ The current configure/build/test presets are:
 |---|---|---|---|
 | `windows-debug` | Windows x64 | Debug | IOCP |
 | `windows-release` | Windows x64 | Release | IOCP |
-| `linux-debug` | Linux x86-64 | Debug | No native backend yet |
-| `linux-release` | Linux x86-64 | Release | No native backend yet |
+| `linux-debug` | Linux x86-64 | Debug | epoll |
+| `linux-release` | Linux x86-64 | Release | epoll |
 
-Linux currently configures with `AURORE_ALLOW_MISSING_PLATFORM_BACKEND=ON`. This is an explicit portability exception, not a production behavior. Once the epoll backend satisfies the network contract, that exemption should be removed from the Linux presets.
+Linux configures with `AURORE_ALLOW_MISSING_PLATFORM_BACKEND=OFF` and requires the native epoll backend. The missing-backend option remains available only as an explicit escape hatch for future platform-porting work.
 
 `CMakeUserPresets.json` is intentionally ignored and may be used for machine-local compiler paths or developer-specific preset inheritance.
 
@@ -202,11 +202,11 @@ The current compile-time backend mapping is:
 
 ```text
 Windows  -> IOCP
-Linux    -> epoll pending
+Linux    -> epoll
 macOS    -> kqueue reserved for future work
 ```
 
-Production configurations are expected to have exactly one native network backend. The missing-backend build option exists only to allow Linux portability work before epoll is complete.
+Production configurations are expected to have exactly one native network backend. The missing-backend build option exists only as an explicit porting escape hatch for platforms whose native backend is not yet implemented.
 
 When adding a backend:
 
@@ -232,7 +232,7 @@ Active settings are grouped primarily under `Network` and `Clients`; additional 
 
 Invalid setting types, invalid backend names, zero capacities, or otherwise inconsistent limits fail initialization rather than being silently coerced.
 
-On Linux today, a successfully built server will fail networking initialization with `BackendUnavailable` because the epoll backend has not yet been implemented. That is the expected portability-baseline behavior.
+On Linux, `Automatic` selects the native epoll backend. `Epoll` may also be selected explicitly in runtime configuration.
 
 ## Tests
 
@@ -247,11 +247,9 @@ Current coverage includes:
 - Core client lifecycle and data foundations;
 - platform-neutral network queues, resource accounting, configuration, and fake-backend lifecycle;
 - Windows IOCP backend internals;
-- Windows real-socket loopback paths.
+- shared real-socket loopback paths exercised against Windows IOCP and Linux epoll.
 
-Platform-neutral `NetworkTests.cpp` is built on both Windows and Linux. IOCP-internal and Winsock loopback tests are included only when the IOCP backend is compiled.
-
-As epoll is implemented, Linux should gain the same shared behavioral expectations rather than a separate weaker test contract.
+Platform-neutral `NetworkTests.cpp`, native-backend lifecycle tests, and the shared real-socket loopback suite are built on both Windows and Linux. Only IOCP-internal tests remain Windows-specific; the loopback client itself has small platform-specific socket implementations behind one shared test contract.
 
 For a change:
 

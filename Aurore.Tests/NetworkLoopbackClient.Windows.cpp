@@ -205,6 +205,14 @@ namespace Aurore::Tests {
 			: WSAENOBUFS;
 	}
 
+	bool LoopbackClient::IsLastErrorTransient() const noexcept {
+		if (m_Impl == nullptr)
+			return false;
+
+		return m_Impl->LastError == WSAETIMEDOUT
+			|| m_Impl->LastError == WSAEWOULDBLOCK;
+	}
+
 	bool LoopbackClient::Connect(
 		std::string_view address,
 		std::uint16_t port,
