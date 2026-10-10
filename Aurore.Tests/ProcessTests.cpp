@@ -190,4 +190,54 @@ namespace Aurore::Tests {
 			.LimitBytes,
 			limit);
 	}
+
+	TEST(
+		ProcessTests,
+		UsesRequestedWorkingDirectory) {
+
+		const auto root =
+			std::filesystem::temp_directory_path()
+			/ "aurore-process-working-directory";
+
+		std::error_code error;
+
+		std::filesystem::remove_all(
+			root,
+			error);
+
+		error.clear();
+
+		std::filesystem::create_directories(
+			root,
+			error);
+
+		ASSERT_FALSE(error);
+
+		const auto result =
+			Process::Run(
+				ProcessRequest{
+					.Executable =
+						HelperPath(),
+					.Arguments = {
+						"working-directory",
+					},
+					.WorkingDirectory =
+						root,
+				});
+
+		ASSERT_TRUE(result.has_value());
+
+		EXPECT_EQ(
+			result->ExitCode,
+			0);
+
+		EXPECT_TRUE(
+			std::filesystem::exists(
+				root
+				/ "process-working-directory.txt"));
+
+		std::filesystem::remove_all(
+			root,
+			error);
+	}
 }

@@ -283,7 +283,8 @@ namespace Aurore::Data::Detail {
 		std::vector<wchar_t> mutable_command_line(command_line->begin(), command_line->end());
 		mutable_command_line.push_back(L'\0');
 		PROCESS_INFORMATION process_info{};
-		const BOOL created = ::CreateProcessW(request.Executable.c_str(), mutable_command_line.data(), nullptr, nullptr, TRUE, EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW, nullptr, nullptr, &startup.StartupInfo, &process_info);
+		const wchar_t* working_directory = request.WorkingDirectory ? request.WorkingDirectory->c_str() : nullptr;
+		const BOOL created = ::CreateProcessW(request.Executable.c_str(), mutable_command_line.data(), nullptr, nullptr, TRUE, EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW, nullptr, working_directory, &startup.StartupInfo, &process_info);
 		const DWORD creation_error = created ? ERROR_SUCCESS : ::GetLastError();
 		::DeleteProcThreadAttributeList(startup.lpAttributeList);
 		if (!created)

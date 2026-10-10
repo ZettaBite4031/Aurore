@@ -10,6 +10,7 @@ set(
     ConfigurationSequenceTests.cpp
     ConfigurationTests.cpp
     DataPreparationTests.cpp
+    JavaRuntimeTests.cpp
     LoginRequestTests.cpp
     MinecraftSourceTests.cpp
     NativeNetworkBackendTests.cpp

@@ -1,3 +1,5 @@
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -6,7 +8,6 @@ int main(int argc, char** argv) {
 	if (argc < 2) return 64;
 
 	const std::string_view mode{ argv[1] };
-
 	if (mode == "capture") {
 		std::cout << "stdout-text\n";
 		std::cerr << "stderr-text\n";
@@ -21,6 +22,21 @@ int main(int argc, char** argv) {
 
 	if (mode == "stdout-flood") {
 		std::cout << std::string(4096, 'x');
+		return 0;
+	}
+
+	if (mode == "working-directory") {
+		std::ofstream marker{ "process-working-directory.txt" };
+		if (!marker.is_open()) return 66;
+		marker << "created";
+		return 0;
+	}
+
+	if (mode == "-version") {
+		std::cerr
+			<< "openjdk version \"21.0.8\" 2026-07-21\n"
+			<< "OpenJDK Runtime Environment\n";
+
 		return 0;
 	}
 

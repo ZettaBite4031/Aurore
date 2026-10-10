@@ -363,6 +363,19 @@ namespace Aurore::Data::Detail {
 				PosixError(result));
 			};
 
+		std::string working_directory;
+		if (request.WorkingDirectory) {
+			working_directory = request.WorkingDirectory->string();
+			if (auto error = add_action(
+				::posix_spawn_file_actions_addchdir_np(
+					&actions,
+					working_directory.c_str()))) {
+
+				destroy_actions();
+				return std::unexpected(*error);
+			}
+		}
+
 		if (auto error = add_action(
 			::posix_spawn_file_actions_addopen(
 				&actions,
@@ -471,14 +484,14 @@ namespace Aurore::Data::Detail {
 
 		StreamState stdout_state{
 			.PipeFd = &stdout_pipe->Read,
-			.Output = &result.StandardOutput,
+			.Output = &result.StdOut,
 			.Limit =
 				request.MaximumStandardOutputBytes,
 		};
 
 		StreamState stderr_state{
 			.PipeFd = &stderr_pipe->Read,
-			.Output = &result.StandardError,
+			.Output = &result.StdErr,
 			.Limit =
 				request.MaximumStandardErrorBytes,
 		};

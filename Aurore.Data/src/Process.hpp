@@ -16,6 +16,8 @@ namespace Aurore::Data::Detail {
 		std::filesystem::path Executable;
 		std::vector<std::string> Arguments;
 
+		std::optional<std::filesystem::path> WorkingDirectory;
+
 		std::size_t MaximumStandardOutputBytes{ DefaultProcessCaptureLimit };
 		std::size_t MaximumStandardErrorBytes{ DefaultProcessCaptureLimit };
 	};
