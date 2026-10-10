@@ -21,6 +21,7 @@ set(
     OfflineLoginStabilizationTests.cpp
     PacketCodecTests.cpp
     PacketFrameTests.cpp
+    ProcessTests.cpp
     ProtocolConnectionTests.cpp
     ProtocolPipelineTests.cpp
     ProtocolSessionTests.cpp
@@ -52,8 +53,37 @@ elseif(AURORE_NETWORK_BACKEND_EPOLL)
 endif()
 
 add_executable(
+    aurore_process_test_helper
+    ProcessTestHelper.cpp
+)
+
+target_link_libraries(
+    aurore_process_test_helper
+    PRIVATE
+    Aurore::BuildOptions
+)
+
+set_target_properties(
+    aurore_process_test_helper
+    PROPERTIES
+    OUTPUT_NAME "Aurore.ProcessTestHelper"
+    FOLDER "Aurore/Tests"
+)
+
+add_executable(
     aurore_tests
     ${aurore_test_sources}
+)
+
+add_dependencies(
+    aurore_tests
+    aurore_process_test_helper
+)
+
+target_compile_definitions(
+    aurore_tests
+    PRIVATE
+    AURORE_PROCESS_TEST_HELPER_PATH="$<TARGET_FILE:aurore_process_test_helper>"
 )
 
 add_executable(Aurore::Tests ALIAS aurore_tests)
@@ -64,6 +94,7 @@ target_include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${PROJECT_SOURCE_DIR}/Aurore.Network/src"
     "${PROJECT_SOURCE_DIR}/Aurore.Core/src"
+    "${PROJECT_SOURCE_DIR}/Aurore.Data/src"
 )
 
 target_link_libraries(
