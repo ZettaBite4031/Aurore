@@ -3,8 +3,13 @@ add_library(
     STATIC
 
     src/DataPreparation.cpp
+    src/MinecraftSource.cpp
+    src/Sha1.cpp
 
     include/Aurore/Data/DataPreparation.hpp
+    include/Aurore/Data/MinecraftSource.hpp
+
+    src/Sha1.hpp
 )
 
 add_library(Aurore::Data ALIAS aurore_data)

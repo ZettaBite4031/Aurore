@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <utility>
 #include <variant>
 
 namespace Aurore::Tests {
@@ -156,5 +157,24 @@ namespace Aurore::Tests {
 			result.error().Code,
 			DataPreparationErrorCode::
 			EmptyLocalJarPath);
+	}
+
+	TEST(
+		DataPreparationRequestTests,
+		RejectsMissingSource) {
+
+		auto options = MakeOptions();
+		options.Source = std::monostate{};
+
+		const auto result =
+			DataPreparationRequest::Create(
+				std::move(options));
+
+		ASSERT_FALSE(result.has_value());
+
+		EXPECT_EQ(
+			result.error().Code,
+			DataPreparationErrorCode::
+			MissingSource);
 	}
 }

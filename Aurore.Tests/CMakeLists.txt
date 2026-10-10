@@ -11,6 +11,7 @@ set(
     ConfigurationTests.cpp
     DataPreparationTests.cpp
     LoginRequestTests.cpp
+    MinecraftSourceTests.cpp
     NativeNetworkBackendTests.cpp
     NbtTests.cpp
     NetworkLoopbackClient.hpp
@@ -63,7 +64,6 @@ target_include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${PROJECT_SOURCE_DIR}/Aurore.Network/src"
     "${PROJECT_SOURCE_DIR}/Aurore.Core/src"
-    "${PROJECT_SOURCE_DIR}/Aurore.Data/include"
 )
 
 target_link_libraries(

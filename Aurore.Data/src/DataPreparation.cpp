@@ -13,6 +13,9 @@ namespace Aurore::Data {
 		if (options.CacheRoot.empty())
 			return std::unexpected(DataPreparationError{ .Code = DataPreparationErrorCode::EmptyCacheRoot });
 
+		if (std::holds_alternative<std::monostate>(options.Source))
+			return std::unexpected(DataPreparationError{ .Code = DataPreparationErrorCode::MissingSource });
+
 		if (const auto* local = std::get_if<LocalJarSource>(&options.Source); local != nullptr && local->JarPath.empty())
 			return std::unexpected(DataPreparationError{ .Code = DataPreparationErrorCode::EmptyLocalJarPath });
 

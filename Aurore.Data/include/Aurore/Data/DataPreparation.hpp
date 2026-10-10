@@ -18,7 +18,7 @@ namespace Aurore::Data {
 		std::filesystem::path JarPath;
 	};
 
-	using MinecraftSource = std::variant<OfficialDownloadSource, LocalJarSource>;
+	using MinecraftSource = std::variant<std::monostate, OfficialDownloadSource, LocalJarSource>;
 
 	struct DataPreparationOptions final {
 		MinecraftVersion Version;
@@ -30,6 +30,7 @@ namespace Aurore::Data {
 		EmptyMinecraftVersion,
 		InvalidProtocolVersion,
 		EmptyCacheRoot,
+		MissingSource,
 		EmptyLocalJarPath,
 	};
 
