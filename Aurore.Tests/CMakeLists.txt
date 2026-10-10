@@ -12,6 +12,7 @@ set(
     DataPreparationTests.cpp
     JavaRuntimeTests.cpp
     LoginRequestTests.cpp
+    MinecraftDataGeneratorTests.cpp
     MinecraftSourceTests.cpp
     NativeNetworkBackendTests.cpp
     NbtTests.cpp

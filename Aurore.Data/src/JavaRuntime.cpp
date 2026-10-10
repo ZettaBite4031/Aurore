@@ -37,7 +37,7 @@ namespace {
 
 			/*
 				Do not interpret an empty PATH component as the current
-				directory. Java discovery should not implicity execute
+				directory. Java discovery should not implicitly execute
 				a binary from Aurore's working directory 
 			*/
 			if (!part.empty())
@@ -171,7 +171,7 @@ namespace Aurore::Data::Detail {
 		std::string_view major_text{ version };
 
 		/*
-			Java 8 and older use the historical 1.x vesion format.
+			Java 8 and older use the historical 1.x version format.
 			For example, 1.8.0_451 represents Java 8.
 		*/
 		if (version.starts_with("1."))
@@ -207,8 +207,8 @@ namespace Aurore::Data::Detail {
 			return ValidateCandidate(candidate, JavaRuntimeSource::JavaHome);
 		}
 
-		for (const auto& DIRECTORY_FLAGS : environment.SearchDirectories) {
-			const auto candidate = DIRECTORY_FLAGS / JavaExecutableName();
+		for (const auto& directory : environment.SearchDirectories) {
+			const auto candidate = directory / JavaExecutableName();
 			std::error_code error;
 			const bool exists = std::filesystem::exists(candidate, error);
 			if (error || !exists) continue;

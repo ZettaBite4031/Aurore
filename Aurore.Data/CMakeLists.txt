@@ -3,6 +3,7 @@ set(
 
     src/DataPreparation.cpp
     src/JavaRuntime.cpp
+    src/MinecraftDataGenerator.cpp
     src/MinecraftSource.cpp
     src/Sha1.cpp
 
@@ -10,6 +11,7 @@ set(
     include/Aurore/Data/MinecraftSource.hpp
 
     src/JavaRuntime.hpp
+    src/MinecraftDataGenerator.hpp
     src/Process.hpp
     src/Sha1.hpp
 )
