@@ -270,11 +270,13 @@ endif()
 # --------------------------------------------------------------------------
 
 add_subdirectory(Aurore.Util)
+add_subdirectory(Aurore.Data)
 add_subdirectory(Aurore.Network)
 add_subdirectory(Aurore.Protocol)
 add_subdirectory(Aurore.World)
 add_subdirectory(Aurore.Core)
 add_subdirectory(Aurore.Server)
+add_subdirectory(Aurore.DataTool)
 
 if(AURORE_BUILD_TESTS)
     add_subdirectory(Aurore.Tests)

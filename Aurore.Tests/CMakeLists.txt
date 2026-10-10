@@ -5,10 +5,11 @@ set(
 
     ByteBufferTests.cpp
     ClientLifecycleTests.cpp
-    ConfigurationTests.cpp
     ConfigurationProtocolTests.cpp
     ConfigurationRuntimeTests.cpp
     ConfigurationSequenceTests.cpp
+    ConfigurationTests.cpp
+    DataPreparationTests.cpp
     LoginRequestTests.cpp
     NativeNetworkBackendTests.cpp
     NbtTests.cpp
@@ -62,6 +63,7 @@ target_include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${PROJECT_SOURCE_DIR}/Aurore.Network/src"
     "${PROJECT_SOURCE_DIR}/Aurore.Core/src"
+    "${PROJECT_SOURCE_DIR}/Aurore.Data/include"
 )
 
 target_link_libraries(
@@ -70,6 +72,7 @@ target_link_libraries(
     PRIVATE
     Aurore::BuildOptions
     Aurore::Core
+    Aurore::Data
     Aurore::Network
     Aurore::Protocol
     Aurore::Util
