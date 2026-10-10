@@ -2,12 +2,14 @@ set(
     aurore_data_sources
 
     src/DataPreparation.cpp
+    src/DataPreparationService.cpp
     src/JavaRuntime.cpp
     src/MinecraftDataGenerator.cpp
     src/MinecraftSource.cpp
     src/Sha1.cpp
 
     include/Aurore/Data/DataPreparation.hpp
+    include/Aurore/Data/DataPreparationService.hpp
     include/Aurore/Data/MinecraftSource.hpp
 
     src/JavaRuntime.hpp

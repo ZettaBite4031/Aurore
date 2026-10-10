@@ -9,6 +9,7 @@ set(
     ConfigurationRuntimeTests.cpp
     ConfigurationSequenceTests.cpp
     ConfigurationTests.cpp
+    DataPreparationServiceTests.cpp
     DataPreparationTests.cpp
     JavaRuntimeTests.cpp
     LoginRequestTests.cpp
