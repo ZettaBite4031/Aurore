@@ -644,6 +644,7 @@ namespace Aurore::Tests {
 				ASSERT_TRUE(ServerTestAccess::InitializeDataFoundations(m_Server));
 				ASSERT_TRUE(ServerTestAccess::InitializeProtocolConfiguration(m_Server));
 				ASSERT_TRUE(ServerTestAccess::InitializeClientManagement(m_Server));
+				ASSERT_TRUE(ServerTestAccess::InitializeWorldManagement(m_Server));
 
 				m_Manager = &ServerTestAccess::GetNetworkManager(m_Server);
 				ASSERT_TRUE(m_Manager->Initialize(MakeLoopbackConfig()).has_value());
@@ -657,6 +658,8 @@ namespace Aurore::Tests {
 			void TearDown() override {
 				if (m_Manager != nullptr && m_Manager->IsInitialized())
 					m_Manager->Shutdown();
+
+				ServerTestAccess::ShutdownWorldManagement(m_Server);
 
 				if (m_Manager == nullptr)
 					return;

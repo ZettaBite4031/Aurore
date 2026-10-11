@@ -102,7 +102,7 @@ namespace Aurore::Core {
 	Server::Server() noexcept : Server(ServerBootstrap{}) {}
 
 	Server::Server(ServerBootstrap bootstrap) noexcept
-		: m_Bootstrap(std::move(bootstrap)), m_ClientService(m_NetworkManager, m_RegistrySnapshots) {}
+		: m_Bootstrap(std::move(bootstrap)), m_ClientService(m_NetworkManager, m_RegistrySnapshots, m_WorldManager) {}
 
 	Server::~Server() noexcept {
 		Shutdown();

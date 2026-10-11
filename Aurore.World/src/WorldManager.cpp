@@ -1,5 +1,6 @@
 #include <Aurore/World/WorldManager.hpp>
 
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -105,6 +106,38 @@ namespace Aurore::World {
 		return true;
 	}
 
+	Player* WorldManager::CreatePlayer(Aurore::Util::Uuid unique_id, std::string username, Dimension& dimension, PlayerPosition spawn_position) {
+		if (!m_Initialized || unique_id.IsNil() || username.empty() || !dimension.IsInitialized())
+			return nullptr;
+
+		const auto entity_id = AllocatePlayerEntityId();
+		if (entity_id <= 0) return nullptr;
+
+		auto player = std::make_unique<Player>(entity_id, std::move(unique_id), std::move(username), dimension, spawn_position);
+		auto result = player.get();
+		const auto [iterator, inserted] = m_Players.emplace(entity_id, std::move(player));
+		if (!inserted) return nullptr;
+		return result;
+	}
+
+	bool WorldManager::RemovePlayer(PlayerEntityId entity_id) noexcept {
+		return m_Players.erase(entity_id) != 0;
+	}
+
+	Player* WorldManager::FindPlayer(PlayerEntityId entity_id) noexcept {
+		const auto iterator = m_Players.find(entity_id);
+		return iterator == m_Players.end() ? nullptr : iterator->second.get();
+	}
+
+	const Player* WorldManager::FindPlayer(PlayerEntityId entity_id) const noexcept {
+		const auto iterator = m_Players.find(entity_id);
+		return iterator == m_Players.end() ? nullptr : iterator->second.get();
+	}
+
+	std::size_t WorldManager::GetPlayerCount() const noexcept {
+		return m_Players.size();
+	}
+
 	Dimension* WorldManager::FindDimension(std::string_view identifier) noexcept {
 		if (m_Overworld && m_Overworld->GetIdentifier() == identifier) return m_Overworld.get();
 		if (m_Nether && m_Nether->GetIdentifier() == identifier) return m_Nether.get();
@@ -141,4 +174,15 @@ namespace Aurore::World {
 	bool WorldManager::IsInitialized() const noexcept { return m_Initialized; }
 
 	bool WorldManager::InitializeDimension(Dimension& dimension) { return dimension.Initialize(); }
+
+	PlayerEntityId WorldManager::AllocatePlayerEntityId() noexcept {
+		if (m_NextPlayerEntityId <= 0) return 0;
+
+		const auto entity_id = m_NextPlayerEntityId;
+		if (entity_id == std::numeric_limits<PlayerEntityId>::max())
+			m_NextPlayerEntityId = 0;
+		else m_NextPlayerEntityId++;
+
+		return entity_id;
+	}
 }

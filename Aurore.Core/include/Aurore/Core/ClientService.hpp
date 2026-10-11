@@ -10,17 +10,20 @@
 #include <Aurore/Protocol/Packets/Configuration.hpp>
 #include <Aurore/Protocol/ProtocolTypes.hpp>
 
+#include <Aurore/World/Player.hpp>
+#include <Aurore/World/WorldManager.hpp>
+
 #include <cstddef>
+#include <unordered_map>
 #include <vector>
 
 namespace Aurore::Core {
 	class ClientService final {
 	public:
-		ClientService(Network::NetworkManager& network_manager, RegistrySnapshotStore& registry_snapshots) noexcept;
+		ClientService(Network::NetworkManager& network_manager, RegistrySnapshotStore& registry_snapshots, World::WorldManager& world_manager) noexcept;
 
 		ClientService(const ClientService&) = delete;
 		ClientService& operator=(const ClientService&) = delete;
-
 		ClientService(ClientService&&) = delete;
 		ClientService& operator=(ClientService&&) = delete;
 
@@ -37,6 +40,8 @@ namespace Aurore::Core {
 
 		[[nodiscard]] std::size_t GetConnectionCount() const noexcept;
 		[[nodiscard]] ClientConnection* FindClient(Network::ConnectionId connection) noexcept;
+		[[nodiscard]] World::Player* FindPlayer(Network::ConnectionId connection) noexcept;
+		[[nodiscard]] const World::Player* FindPlayer(Network::ConnectionId connection) const noexcept;
 		[[nodiscard]] std::vector<ClientSnapshot> GetClientSnapshots() const;
 
 	private:
@@ -54,12 +59,18 @@ namespace Aurore::Core {
 		[[nodiscard]] bool HandleLoginStartRequest(ClientConnection& client, const Protocol::LoginStartRequest& request);
 		[[nodiscard]] bool HandleConfigurationStartRequest(ClientConnection& client, const Protocol::ConfigurationStartRequest& request);
 		[[nodiscard]] bool HandleConfigurationCompleteRequest(ClientConnection& client, const Protocol::ConfigurationCompleteRequest& request);
+		[[nodiscard]] bool HandlePlayerMovementRequest(ClientConnection& client, const Protocol::PlayerMovementRequest& request);
+		[[nodiscard]] bool HandlePlayerLoadedRequest(ClientConnection& client, const Protocol::PlayerLoadedRequest& request);
+
+		void RemoveWorldPlayer(Network::ConnectionId connection) noexcept;
 
 		Network::NetworkManager& m_NetworkManager;
 		RegistrySnapshotStore& m_RegistrySnapshots;
+		World::WorldManager& m_WorldManager;
 
 		ConnectionManager m_ConnectionManager;
 		ClientLogin m_ClientLogin;
+		std::unordered_map<Network::ConnectionId, World::PlayerEntityId> m_PlayerConnections;
 
 		Protocol::ConfigurationSequencePolicy m_ConfigurationPolicy;
 		Protocol::Packets::Configuration::Limits m_ConfigurationLimits{ Protocol::Packets::Configuration::DefaultLimits };

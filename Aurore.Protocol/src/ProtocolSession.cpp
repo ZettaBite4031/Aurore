@@ -42,44 +42,22 @@ namespace Aurore::Protocol {
 		m_State = ProtocolState::Disconnected;
 	}
 
-	ProtocolState ProtocolSession::GetState() const noexcept {
-		return m_State;
-	}
-
-	bool ProtocolSession::IsDisconnected() const noexcept {
-		return m_State == ProtocolState::Disconnected;
-	}
-
-	bool ProtocolSession::HasHandshake() const noexcept {
-		return m_Handshake.has_value();
-	}
+	ProtocolState ProtocolSession::GetState() const noexcept { return m_State; }
+	bool ProtocolSession::IsDisconnected() const noexcept { return m_State == ProtocolState::Disconnected; }
+	bool ProtocolSession::HasHandshake() const noexcept { return m_Handshake.has_value(); }
 
 	const HandshakeData* ProtocolSession::GetHandshake() const noexcept {
-		if (!m_Handshake) return nullptr;
-		return &*m_Handshake;
+		return m_Handshake ? &*m_Handshake : nullptr;
 	}
 
-	const ServerStatus& ProtocolSession::GetServerStatus() const noexcept {
-		return m_ServerStatus;
-	}
-
-	const std::optional<ProtocolRequestId>& ProtocolSession::GetPendingRequestId() const noexcept {
-		return m_PendingRequestId;
-	}
-
-	const std::optional<Packets::Configuration::Serverbound::ClientInformation>& ProtocolSession::GetClientInformation() const noexcept {
-		return m_ClientInformation;
-	}
-
-	const std::optional<std::string>& ProtocolSession::GetClientBrand() const noexcept {
-		return m_ClientBrand;
-	}
+	const ServerStatus& ProtocolSession::GetServerStatus() const noexcept { return m_ServerStatus; }
+	const std::optional<ProtocolRequestId>& ProtocolSession::GetPendingRequestId() const noexcept { return m_PendingRequestId; }
+	const std::optional<Packets::Configuration::Serverbound::ClientInformation>& ProtocolSession::GetClientInformation() const noexcept { return m_ClientInformation; }
+	const std::optional<std::string>& ProtocolSession::GetClientBrand() const noexcept { return m_ClientBrand; }
 
 	Aurore::Util::RegistryGeneration ProtocolSession::GetConfigurationGeneration() const noexcept {
-		if (m_RegistrySnapshot)
-			return m_RegistrySnapshot->GetGeneration();
-		if (m_ConfigurationPlan)
-			return m_ConfigurationPlan->GetGeneration();
+		if (m_RegistrySnapshot) return m_RegistrySnapshot->GetGeneration();
+		if (m_ConfigurationPlan) return m_ConfigurationPlan->GetGeneration();
 		return Aurore::Util::NoRegistryGeneration;
 	}
 
@@ -343,28 +321,56 @@ namespace Aurore::Protocol {
 	}
 
 	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::MovePlayerPosition& packet) {
-		(void)packet;
-		return ProtocolAction{};
+		ProtocolAction action;
+		action.Requests.emplace_back(PlayerMovementRequest{
+			.X = packet.X,
+			.Y = packet.Y,
+			.Z = packet.Z,
+			.OnGround = packet.Flags.OnGround,
+			.HorizontalCollision = packet.Flags.HorizontalCollision,
+		});
+		return action;
 	}
 
 	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::MovePlayerPositionRotation& packet) {
-		(void)packet;
-		return ProtocolAction{};
+		ProtocolAction action;
+		action.Requests.emplace_back(PlayerMovementRequest{
+			.X = packet.X,
+			.Y = packet.Y,
+			.Z = packet.Z,
+			.Yaw = packet.Yaw,
+			.Pitch = packet.Pitch,
+			.OnGround = packet.Flags.OnGround,
+			.HorizontalCollision = packet.Flags.HorizontalCollision,
+		});
+		return action;
 	}
 
 	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::MovePlayerRotation& packet) {
-		(void)packet;
-		return ProtocolAction{};
+		ProtocolAction action;
+		action.Requests.emplace_back(PlayerMovementRequest{
+			.Yaw = packet.Yaw,
+			.Pitch = packet.Pitch,
+			.OnGround = packet.Flags.OnGround,
+			.HorizontalCollision = packet.Flags.HorizontalCollision,
+		});
+		return action;
 	}
 
 	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::MovePlayerStatusOnly& packet) {
-		(void)packet;
-		return ProtocolAction{};
+		ProtocolAction action;
+		action.Requests.emplace_back(PlayerMovementRequest{
+			.OnGround = packet.Flags.OnGround,
+			.HorizontalCollision = packet.Flags.HorizontalCollision,
+		});
+		return action;
 	}
 
 	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::PlayerLoaded& packet) {
 		(void)packet;
-		return ProtocolAction{};
+		ProtocolAction action;
+		action.Requests.emplace_back(PlayerLoadedRequest{});
+		return action;
 	}
 
 	ProtocolHandleResult ProtocolSession::ResolveLogin(const LoginAcceptedResolution& resolution) {

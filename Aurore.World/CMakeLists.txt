@@ -3,9 +3,11 @@ add_library(
     STATIC
 
     src/Dimension.cpp
+    src/Player.cpp
     src/WorldManager.cpp
 
     include/Aurore/World/Dimension.hpp
+    include/Aurore/World/Player.hpp
     include/Aurore/World/WorldManager.hpp
 )
 
@@ -19,6 +21,10 @@ target_include_directories(
 
 target_link_libraries(
     aurore_world
+
+    PUBLIC
+    Aurore::Util
+
     PRIVATE
     Aurore::BuildOptions
 )

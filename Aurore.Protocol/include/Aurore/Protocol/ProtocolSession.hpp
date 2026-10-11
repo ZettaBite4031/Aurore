@@ -33,18 +33,43 @@ namespace Aurore::Protocol {
 		Aurore::Util::RegistryGeneration Generation{ Aurore::Util::NoRegistryGeneration };
 	};
 
+	struct PlayerMovementRequest final {
+		std::optional<double> X;
+		std::optional<double> Y;
+		std::optional<double> Z;
+		std::optional<float> Yaw;
+		std::optional<float> Pitch;
+		bool OnGround{ false };
+		bool HorizontalCollision{ false };
+	};
+
+	struct PlayerLoadedRequest final {};
+
 	using ProtocolRequest = std::variant<
 		LoginStartRequest,
 		ConfigurationStartRequest,
-		ConfigurationCompleteRequest>;
+		ConfigurationCompleteRequest,
+		PlayerMovementRequest,
+		PlayerLoadedRequest>;
 
 	struct ConfigurationReadyResolution final {
 		ProtocolRequestId Id;
 		ConfigurationTransmissionPlan Plan;
 	};
 
+	struct PlayAdmission final {
+		std::int32_t PlayerEntityId{ 1 };
+		std::string DimensionIdentifier{ "minecraft:overworld" };
+		double X{ 0.5 };
+		double Y{ 64.0 };
+		double Z{ 0.5 };
+		float Yaw{ 0.0F };
+		float Pitch{ 0.0F };
+	};
+
 	struct ConfigurationAcceptedResolution final {
 		ProtocolRequestId Id;
+		PlayAdmission Admission;
 	};
 
 	struct ConfigurationRejectedResolution final {
@@ -159,7 +184,6 @@ namespace Aurore::Protocol {
 		[[nodiscard]] bool MatchesPendingConfigurationRequest(ProtocolRequestId id, ConfigurationPhase phase) const noexcept;
 
 		[[nodiscard]] ProtocolRequestId AllocateRequestId() noexcept;
-
 
 		ProtocolState m_State{ ProtocolState::Handshake };
 		StatusPhase m_StatusPhase{ StatusPhase::AwaitingRequest };

@@ -43,5 +43,13 @@ namespace Aurore::Core::Detail {
 		[[nodiscard]] static std::vector<ClientSnapshot> GetClientSnapshots(const Server& server) {
 			return server.m_ClientService.GetClientSnapshots();
 		}
+
+		[[nodiscard]] static bool InitializeWorldManagement(Server& server) {
+			return server.m_WorldManager.Initialize();
+		}
+
+		static void ShutdownWorldManagement(Server& server) noexcept {
+			server.m_WorldManager.Shutdown();
+		}
 	};
 }

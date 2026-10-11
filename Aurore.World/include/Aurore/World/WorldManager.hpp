@@ -1,9 +1,16 @@
 #pragma once
 
 #include <Aurore/World/Dimension.hpp>
+#include <Aurore/World/Player.hpp>
 
+#include <Aurore/Util/UUID.hpp>
+
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace Aurore::World {
@@ -26,6 +33,13 @@ namespace Aurore::World {
 
 		[[nodiscard]] bool RegisterCustomDimension(std::unique_ptr<Dimension> dimension);
 
+		[[nodiscard]] Player* CreatePlayer(Aurore::Util::Uuid unique_id, std::string username, Dimension& dimension, PlayerPosition spawn_position = {});
+
+		[[nodiscard]] bool RemovePlayer(PlayerEntityId entity_id) noexcept;
+		[[nodiscard]] Player* FindPlayer(PlayerEntityId entity_id) noexcept;
+		[[nodiscard]] const Player* FindPlayer(PlayerEntityId entity_id) const noexcept;
+		[[nodiscard]] std::size_t GetPlayerCount() const noexcept;
+
 		[[nodiscard]] Dimension* FindDimension(std::string_view identifier) noexcept;
 		[[nodiscard]] const Dimension* FindDimension(std::string_view identifier) const noexcept;
 
@@ -42,6 +56,7 @@ namespace Aurore::World {
 
 	private:
 		[[nodiscard]] bool InitializeDimension(Dimension& dimension);
+		[[nodiscard]] PlayerEntityId AllocatePlayerEntityId() noexcept;
 
 		std::unique_ptr<Dimension> m_Overworld;
 		std::unique_ptr<Dimension> m_Nether;
@@ -54,6 +69,9 @@ namespace Aurore::World {
 			dimensions and in deterministic registration order.
 		*/
 		std::vector<std::unique_ptr<Dimension>> m_CustomDimensions;
+
+		std::unordered_map<PlayerEntityId, std::unique_ptr<Player>> m_Players;
+		PlayerEntityId m_NextPlayerEntityId{ 1 };
 
 		bool m_Initialized{ false };
 	};

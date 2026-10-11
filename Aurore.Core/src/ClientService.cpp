@@ -37,9 +37,8 @@ namespace {
 }
 
 namespace Aurore::Core {
-	ClientService::ClientService(Network::NetworkManager& network_manager,
-		RegistrySnapshotStore& registry_snapshots) noexcept
-		: m_NetworkManager(network_manager), m_RegistrySnapshots(registry_snapshots) {}
+	ClientService::ClientService(Network::NetworkManager& network_manager, RegistrySnapshotStore& registry_snapshots, World::WorldManager& world_manager) noexcept
+		: m_NetworkManager(network_manager), m_RegistrySnapshots(registry_snapshots), m_WorldManager(world_manager) {}
 
 	bool ClientService::Initialize(ClientConfiguration client_configuration,
 		Protocol::ConfigurationSequencePolicy configuration_policy,
@@ -54,6 +53,7 @@ namespace Aurore::Core {
 		m_ServerStatus = std::move(server_status);
 		m_FatalNetworkFailure = false;
 
+		m_PlayerConnections.clear();
 		m_ConnectionManager.Clear();
 		return true;
 	}
@@ -62,8 +62,7 @@ namespace Aurore::Core {
 		auto status = m_ServerStatus;
 		const auto online_players = m_ConnectionManager.AuthenticatedCount();
 
-		status.OnlinePlayers = static_cast<std::int32_t>(std::min<std::size_t>(
-			online_players,
+		status.OnlinePlayers = static_cast<std::int32_t>(std::min<std::size_t>(online_players,
 			static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())));
 
 		return status;
@@ -71,11 +70,8 @@ namespace Aurore::Core {
 
 	bool ClientService::ProcessNetworkEvents() {
 		auto events = m_NetworkManager.DrainEvents();
-		for (auto& event : events) {
-			std::visit([this](const auto& value) {
-				HandleNetworkEvent(value);
-			}, event);
-		}
+		for (auto& event : events) 
+			std::visit([this](const auto& value) { HandleNetworkEvent(value); }, event);
 		return !m_FatalNetworkFailure;
 	}
 
@@ -304,11 +300,15 @@ namespace Aurore::Core {
 				return HandleLoginStartRequest(client, value);
 			else if constexpr (std::is_same_v<Request, Protocol::ConfigurationStartRequest>)
 				return HandleConfigurationStartRequest(client, value);
-			else {
-				static_assert(std::is_same_v<Request, Protocol::ConfigurationCompleteRequest>);
+			else if constexpr (std::is_same_v<Request, Protocol::ConfigurationCompleteRequest>)
 				return HandleConfigurationCompleteRequest(client, value);
+			else if constexpr (std::is_same_v<Request, Protocol::PlayerMovementRequest>)
+				return HandlePlayerMovementRequest(client, value);
+			else {
+				static_assert(std::is_same_v<Request, Protocol::PlayerLoadedRequest>);
+				return HandlePlayerLoadedRequest(client, value);
 			}
-		}, request);
+			}, request);
 	}
 
 	bool ClientService::HandleLoginStartRequest(ClientConnection& client, const Protocol::LoginStartRequest& request) {
@@ -428,21 +428,25 @@ namespace Aurore::Core {
 		const auto& client_information = session.GetClientInformation();
 		const auto retained_generation = session.GetConfigurationGeneration();
 		const auto& identity = client.GetIdentity();
-		const bool has_client_information = session.GetClientInformation().has_value();
+		const bool has_client_information = client_information.has_value();
 
 		const bool can_enter_play = client.IsTransportOpen() && !client.IsCloseRequested()
 			&& identity.has_value() && identity->IsComplete()
 			&& has_client_information
 			&& client.GetProtocolState() == Protocol::ProtocolState::Configuration
 			&& request.Generation != Util::NoRegistryGeneration
-			&& retained_generation == request.Generation;
+			&& retained_generation == request.Generation
+			&& m_WorldManager.IsInitialized()
+			&& m_WorldManager.GetOverworld() != nullptr;
 
 		if (!can_enter_play) {
 			AU_WARN(LogCategory::Protocol,
 				"Rejected Configuration completion request {} for connection {}. "
-				"Requested generation: {}, retained generation: {}, has identity: {}, has client information: {}",
-				request.Id.Value, connection.Value, request.Generation,
-				retained_generation, identity.has_value(), has_client_information);
+				"Requested generation: {}, retained generation: {}, has identity: {}, "
+				"has client information: {}, world initialized: {}, has overworld: {}",
+				request.Id.Value, connection.Value, request.Generation, retained_generation,
+				identity.has_value(), has_client_information, m_WorldManager.IsInitialized(),
+				m_WorldManager.GetOverworld() != nullptr);
 
 			auto result = client.ResolveConfiguration(Protocol::ConfigurationResolution{
 				Protocol::ConfigurationRejectedResolution{ .Id = request.Id }
@@ -453,47 +457,125 @@ namespace Aurore::Core {
 			return false;
 		}
 
+		if (m_PlayerConnections.contains(connection)) {
+			AU_ERROR(LogCategory::Player, "Connection {} already owns a world player before Play admission", connection.Value);
+			(void)m_ConnectionManager.ReleaseIdentity(connection);
+			RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+			return false;
+		}
+
+		auto* overworld = m_WorldManager.GetOverworld();
+		World::PlayerPosition spawn_position{};
+		auto* player = m_WorldManager.CreatePlayer(identity->UniqueId, identity->Username, *overworld, spawn_position);
+		if (player == nullptr) {
+			AU_ERROR(LogCategory::Player, "Failed to create world player for connection {}", connection.Value);
+			(void)m_ConnectionManager.ReleaseIdentity(connection);
+			RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+			return false;
+		}
+
+		m_PlayerConnections.emplace(connection, player->GetEntityId());
+		const auto& position = player->GetPosition();
+
 		auto result = client.ResolveConfiguration(Protocol::ConfigurationResolution{
-			Protocol::ConfigurationAcceptedResolution{ .Id = request.Id }
+			Protocol::ConfigurationAcceptedResolution{
+				.Id = request.Id,
+				.Admission = Protocol::PlayAdmission {
+					.PlayerEntityId = player->GetEntityId(),
+					.DimensionIdentifier = std::string(player->GetDimension().GetIdentifier()),
+					.X = position.X,
+					.Y = position.Y,
+					.Z = position.Z,
+					.Yaw = position.Yaw,
+					.Pitch = position.Pitch,
+				},
+			}
 		});
 
 		if (result.HasError() || result.Disposition != ClientReceiveDisposition::KeepOpen) {
+			RemoveWorldPlayer(connection);
 			(void)m_ConnectionManager.ReleaseIdentity(connection);
 			(void)ApplyClientResult(client, std::move(result));
 			return false;
 		}
 
 		if (!ApplyClientResult(client, std::move(result))) {
+			RemoveWorldPlayer(connection);
 			(void)m_ConnectionManager.ReleaseIdentity(connection);
 			return false;
 		}
 
-		if (client.GetProtocolState() != Protocol::ProtocolState::Play || client.GetLifecycleState() != ClientLifecycleState::Play) {
-			AU_ERROR(LogCategory::Core, "Configuration completion for connection {} did not transition the client into Play. "
-					"Protocol state: {}, lifecycle state: {}", connection.Value,
-					Protocol::GetProtocolStateName(client.GetProtocolState()),
-					static_cast<unsigned int>(client.GetLifecycleState()));
+		if (client.GetProtocolState() != Protocol::ProtocolState::Play
+			|| client.GetLifecycleState() != ClientLifecycleState::Play) {
+			AU_ERROR(LogCategory::Core,
+				"Configuration completion for connection {} did not transition the client into Play. Protocol state: {}, lifecycle state: {}",
+				connection.Value,
+				Protocol::GetProtocolStateName(client.GetProtocolState()),
+				static_cast<unsigned int>(client.GetLifecycleState()));
 
+			RemoveWorldPlayer(connection);
 			(void)m_ConnectionManager.ReleaseIdentity(connection);
-
 			RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
-
 			return false;
 		}
 
-		AU_DEBUG(LogCategory::Protocol,
-			"Configuration completed for connection {} using registry generation {}; client entered Play",
+		AU_DEBUG(LogCategory::Protocol, "Configuration completed for connection {} using registry generation {}; client entered Play",
 			connection.Value, request.Generation);
 
-		const auto& player_identity = *identity;
-		AU_INFO(LogCategory::Player, "Player '{}' ({}) joined the server on connection {}",
-			player_identity.Username, player_identity.UniqueId.ToString(), connection.Value);
+		AU_INFO(LogCategory::Player, "Player '{}' ({}) joined the server as entity {} on connection {}",
+			identity->Username, identity->UniqueId.ToString(), player->GetEntityId(), connection.Value);
 
-		AU_DEBUG(LogCategory::Protocol,
-			"Configuration metadata for connection {}. Client Information: {}, Client Brand: {}, Brand Bytes: {}",
+		AU_DEBUG(LogCategory::Protocol, "Configuration metadata for connection {}. Client Information: {}, Client Brand: {}, Brand Bytes: {}",
 			connection.Value, client_information.has_value(), client_brand.has_value(), client_brand ? client_brand->size() : 0);
 
 		return true;
+	}
+
+	bool ClientService::HandlePlayerMovementRequest(ClientConnection& client, const Protocol::PlayerMovementRequest& request) {
+		auto* player = FindPlayer(client.GetConnectionId());
+		if (player == nullptr || client.GetProtocolState() != Protocol::ProtocolState::Play) {
+			AU_WARN(LogCategory::Player, "Received player movement for connection {} without an admitted world player", client.GetConnectionId().Value);
+			RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+			return false;
+		}
+
+		const bool applied = player->ApplyMovement(World::PlayerMovementUpdate{
+			.X = request.X,
+			.Y = request.Y,
+			.Z = request.Z,
+			.Yaw = request.Yaw,
+			.Pitch = request.Pitch,
+			.OnGround = request.OnGround,
+			.HorizontalCollision = request.HorizontalCollision,
+		});
+
+		if (applied) return true;
+
+		AU_WARN(LogCategory::Player, "Rejected non-finite movement from player '{}' on connection {}",
+			player->GetUsername(), client.GetConnectionId().Value);
+		RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+		return false;
+	}
+
+	bool ClientService::HandlePlayerLoadedRequest(ClientConnection& client, const Protocol::PlayerLoadedRequest& request) {
+		(void)request;
+		auto* player = FindPlayer(client.GetConnectionId());
+		if (player == nullptr || client.GetProtocolState() != Protocol::ProtocolState::Play) {
+			RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+			return false;
+		}
+
+		player->MarkLoaded();
+		AU_DEBUG(LogCategory::Player, "Player '{}' reported client world load complete", player->GetUsername());
+		return true;
+	}
+
+	void ClientService::RemoveWorldPlayer(Network::ConnectionId connection) noexcept {
+		const auto iterator = m_PlayerConnections.find(connection);
+		if (iterator == m_PlayerConnections.end()) return;
+
+		(void)m_WorldManager.RemovePlayer(iterator->second);
+		m_PlayerConnections.erase(iterator);
 	}
 
 	void ClientService::BeginShutdown() noexcept {
@@ -501,6 +583,11 @@ namespace Aurore::Core {
 	}
 
 	void ClientService::CompleteShutdown() noexcept {
+		for (const auto& [connection, entity_id] : m_PlayerConnections) {
+			(void)connection;
+			(void)m_WorldManager.RemovePlayer(entity_id);
+		}
+		m_PlayerConnections.clear();
 		m_ConnectionManager.Clear();
 		m_FatalNetworkFailure = false;
 	}
@@ -511,6 +598,18 @@ namespace Aurore::Core {
 
 	ClientConnection* ClientService::FindClient(Network::ConnectionId connection) noexcept {
 		return m_ConnectionManager.Find(connection);
+	}
+
+	World::Player* ClientService::FindPlayer(Network::ConnectionId connection) noexcept {
+		const auto iterator = m_PlayerConnections.find(connection);
+		if (iterator == m_PlayerConnections.end()) return nullptr;
+		return m_WorldManager.FindPlayer(iterator->second);
+	}
+
+	const World::Player* ClientService::FindPlayer(Network::ConnectionId connection) const noexcept {
+		const auto iterator = m_PlayerConnections.find(connection);
+		if (iterator == m_PlayerConnections.end()) return nullptr;
+		return m_WorldManager.FindPlayer(iterator->second);
 	}
 
 	std::vector<ClientSnapshot> ClientService::GetClientSnapshots() const {
