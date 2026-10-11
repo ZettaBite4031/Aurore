@@ -19,6 +19,7 @@
 namespace Aurore::Util {
 	struct BlockDefinition final {
 		NbtCompound Data;
+		RegistryRuntimeId DefaultStateId{ 0 };
 
 		bool operator==(const BlockDefinition&) const noexcept = default;
 	};

@@ -66,6 +66,7 @@ namespace Aurore::Tests {
 				ASSERT_FALSE(error);
 
 				WriteStaticRegistryReport();
+				WriteBlockStateReport();
 				WriteDimensionFixtures();
 				WriteBiomeFixtures();
 				WriteNetworkFixtures();
@@ -137,6 +138,28 @@ namespace Aurore::Tests {
 							"entries": {
 								"minecraft:water": { "protocol_id": 0 }
 							}
+						}
+					})json");
+			}
+
+			void WriteBlockStateReport() const {
+				WriteFile(
+					"reports/blocks.json",
+					R"json({
+						"minecraft:air": {
+							"states": [
+								{ "id": 0, "default": true }
+							]
+						},
+						"minecraft:stone": {
+							"states": [
+								{ "id": 1, "default": true }
+							]
+						},
+						"minecraft:dirt": {
+							"states": [
+								{ "id": 2, "default": true }
+							]
 						}
 					})json");
 			}
@@ -585,12 +608,19 @@ namespace Aurore::Tests {
 		EXPECT_EQ(*items.FindRuntimeId(stone_key), 1u);
 		EXPECT_EQ(*items.FindRuntimeId(dirt_key), 2u);
 
+		const auto* air_block = blocks.Find(air_key);
 		const auto* stone_block = blocks.Find(stone_key);
+		const auto* dirt_block = blocks.Find(dirt_key);
 		const auto* stone_item = items.Find(stone_key);
+		ASSERT_NE(air_block, nullptr);
 		ASSERT_NE(stone_block, nullptr);
+		ASSERT_NE(dirt_block, nullptr);
 		ASSERT_NE(stone_item, nullptr);
 		EXPECT_TRUE(stone_block->Value.Data.Empty());
 		EXPECT_TRUE(stone_item->Value.Data.Empty());
+		EXPECT_EQ(air_block->Value.DefaultStateId, 0u);
+		EXPECT_EQ(stone_block->Value.DefaultStateId, 1u);
+		EXPECT_EQ(dirt_block->Value.DefaultStateId, 2u);
 
 		const auto& static_registries = (*result)->GetStaticRegistries();
 		ASSERT_EQ(static_registries.Size(), 4u);
@@ -1026,7 +1056,6 @@ namespace Aurore::Tests {
 		EXPECT_EQ(*result.error().Key, ParseRequired("minecraft:black"));
 	}
 
-
 	TEST_F(VanillaDataImporterTests, RejectsUnknownTimelineEnvironmentAttribute) {
 		WriteFile(
 			"data/minecraft/timeline/overworld.json",
@@ -1048,7 +1077,6 @@ namespace Aurore::Tests {
 		EXPECT_EQ(*result.error().Key, ParseRequired("minecraft:overworld"));
 	}
 
-
 	TEST_F(VanillaDataImporterTests, AllowsMissingOptionalEmptyNetworkRegistrySource) {
 		std::filesystem::remove_all(m_Root / "data" / "minecraft" / "test_instance");
 
@@ -1061,7 +1089,6 @@ namespace Aurore::Tests {
 		ASSERT_NE(registry, nullptr);
 		EXPECT_TRUE(registry->Empty());
 	}
-
 
 	TEST_F(VanillaDataImporterTests, RejectsRequiredMissingTagMember) {
 		WriteFile(
@@ -1148,6 +1175,22 @@ namespace Aurore::Tests {
 		EXPECT_EQ((*result)->GetNetworkRegistries().Size(), 21u);
 		EXPECT_EQ((*result)->GetStaticRegistries().Size(), 4u);
 
+		const auto& blocks = (*result)->GetBlocks();
+		const auto* air = blocks.Find(ParseRequired("minecraft:air"));
+		const auto* stone = blocks.Find(ParseRequired("minecraft:stone"));
+		const auto* dirt = blocks.Find(ParseRequired("minecraft:dirt"));
+		const auto* grass = blocks.Find(ParseRequired("minecraft:grass_block"));
+
+		ASSERT_NE(air, nullptr);
+		ASSERT_NE(stone, nullptr);
+		ASSERT_NE(dirt, nullptr);
+		ASSERT_NE(grass, nullptr);
+
+		EXPECT_EQ(air->Value.DefaultStateId, 0u);
+		EXPECT_NE(stone->Value.DefaultStateId, air->Value.DefaultStateId);
+		EXPECT_NE(dirt->Value.DefaultStateId, air->Value.DefaultStateId);
+		EXPECT_NE(grass->Value.DefaultStateId, air->Value.DefaultStateId);
+
 		const auto* entity_types =
 			(*result)->GetStaticRegistries().Find(
 				ParseRequired("minecraft:entity_type"));
@@ -1180,5 +1223,4 @@ namespace Aurore::Tests {
 		EXPECT_EQ(static_tags.Size(), 4u);
 		EXPECT_GT(static_tags.GetTotalTagCount(), 0u);
 	}
-
 }

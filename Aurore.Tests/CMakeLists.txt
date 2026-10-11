@@ -4,6 +4,7 @@ set(
     main.cpp
 
     ByteBufferTests.cpp
+    ChunkDeliveryTests.cpp
     ClientLifecycleTests.cpp
     ConfigurationProtocolTests.cpp
     ConfigurationRuntimeTests.cpp

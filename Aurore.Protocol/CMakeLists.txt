@@ -34,7 +34,7 @@ add_library(
     include/Aurore/Protocol/Packets/Login.hpp
     include/Aurore/Protocol/Packets/Status.hpp
     include/Aurore/Protocol/Packets/Play.hpp
-)
+ "src/PlayChunk.cpp")
 
 add_library(Aurore::Protocol ALIAS aurore_protocol)
 
