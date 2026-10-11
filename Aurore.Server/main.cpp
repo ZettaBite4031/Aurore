@@ -83,7 +83,7 @@ int main() {
 		<< "Registry snapshot generation "
 		<< Aurore::Server::InitialRegistryGeneration
 		<< " prepared from "
-		<< bootstrap->CorpusRoot.string()
+		<< std::filesystem::relative(bootstrap->CorpusRoot).string()
 		<< '\n';
 
 	Aurore::Core::Server server{ std::move(bootstrap->Bootstrap) };
