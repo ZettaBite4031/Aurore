@@ -39,6 +39,7 @@ set(
     ServerDataFoundationTests.cpp
     SyntheticRegistrySnapshotTests.cpp
     TickScheduleTests.cpp
+    VanillaDataImporterTests.cpp
 )
 
 if(AURORE_NETWORK_BACKEND_IOCP)

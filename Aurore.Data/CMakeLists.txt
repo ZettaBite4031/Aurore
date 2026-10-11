@@ -11,11 +11,13 @@ set(
     src/MojangMetadata.cpp
     src/OfficialMinecraftSource.cpp
     src/Sha1.cpp
+    src/VanillaDataImporter.cpp
 
     include/Aurore/Data/DataPreparation.hpp
     include/Aurore/Data/DataPreparationService.hpp
     include/Aurore/Data/MinecraftDataCorpus.hpp
     include/Aurore/Data/MinecraftSource.hpp
+    include/Aurore/Data/VanillaDataImporter.hpp
 
     src/FileIdentity.hpp
     src/HttpClient.hpp
