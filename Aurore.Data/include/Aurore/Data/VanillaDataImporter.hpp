@@ -15,6 +15,7 @@
 namespace Aurore::Data {
 	enum class VanillaDataImportStage : std::uint8_t {
 		TargetValidation,
+		StaticRegistries,
 		DimensionTypes,
 		Biomes,
 		NetworkRegistries,

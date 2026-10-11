@@ -64,7 +64,7 @@ namespace Aurore::Tests {
 				std::filesystem::create_directories(m_Root / "data" / "minecraft" / "worldgen" / "biome", error);
 				ASSERT_FALSE(error);
 
-				WriteFile("reports/registries.json", "{}");
+				WriteStaticRegistryReport();
 				WriteDimensionFixtures();
 				WriteBiomeFixtures();
 				WriteNetworkFixtures();
@@ -86,6 +86,43 @@ namespace Aurore::Tests {
 				ASSERT_TRUE(stream.is_open());
 				stream.write(content.data(), static_cast<std::streamsize>(content.size()));
 				ASSERT_TRUE(stream.good());
+			}
+
+			void WriteStaticRegistryReport() const {
+				WriteFile(
+					"reports/registries.json",
+					R"json({
+						"minecraft:block": {
+							"default": "minecraft:air",
+							"entries": {
+								"minecraft:dirt": {
+									"protocol_id": 2
+								},
+								"minecraft:air": {
+									"protocol_id": 0
+								},
+								"minecraft:stone": {
+									"protocol_id": 1
+								}
+							},
+							"protocol_id": 4
+						},
+						"minecraft:item": {
+							"default": "minecraft:air",
+							"entries": {
+								"minecraft:stone": {
+									"protocol_id": 1
+								},
+								"minecraft:dirt": {
+									"protocol_id": 2
+								},
+								"minecraft:air": {
+									"protocol_id": 0
+								}
+							},
+							"protocol_id": 7
+						}
+					})json");
 			}
 
 			void WriteDimensionFixtures() const {
@@ -418,8 +455,37 @@ namespace Aurore::Tests {
 		ASSERT_NE(*result, nullptr);
 		EXPECT_EQ((*result)->GetGeneration(), generation);
 
-		EXPECT_TRUE((*result)->GetBlocks().Empty());
-		EXPECT_TRUE((*result)->GetItems().Empty());
+		const auto& blocks = (*result)->GetBlocks();
+		const auto& items = (*result)->GetItems();
+
+		ASSERT_EQ(blocks.Size(), 3u);
+		ASSERT_EQ(items.Size(), 3u);
+
+		const auto air_key = ParseRequired("minecraft:air");
+		const auto stone_key = ParseRequired("minecraft:stone");
+		const auto dirt_key = ParseRequired("minecraft:dirt");
+
+		ASSERT_TRUE(blocks.FindRuntimeId(air_key).has_value());
+		ASSERT_TRUE(blocks.FindRuntimeId(stone_key).has_value());
+		ASSERT_TRUE(blocks.FindRuntimeId(dirt_key).has_value());
+		EXPECT_EQ(*blocks.FindRuntimeId(air_key), 0u);
+		EXPECT_EQ(*blocks.FindRuntimeId(stone_key), 1u);
+		EXPECT_EQ(*blocks.FindRuntimeId(dirt_key), 2u);
+
+		ASSERT_TRUE(items.FindRuntimeId(air_key).has_value());
+		ASSERT_TRUE(items.FindRuntimeId(stone_key).has_value());
+		ASSERT_TRUE(items.FindRuntimeId(dirt_key).has_value());
+		EXPECT_EQ(*items.FindRuntimeId(air_key), 0u);
+		EXPECT_EQ(*items.FindRuntimeId(stone_key), 1u);
+		EXPECT_EQ(*items.FindRuntimeId(dirt_key), 2u);
+
+		const auto* stone_block = blocks.Find(stone_key);
+		const auto* stone_item = items.Find(stone_key);
+		ASSERT_NE(stone_block, nullptr);
+		ASSERT_NE(stone_item, nullptr);
+		EXPECT_TRUE(stone_block->Value.Data.Empty());
+		EXPECT_TRUE(stone_item->Value.Data.Empty());
+
 		EXPECT_EQ((*result)->GetNetworkRegistries().Size(), 21u);
 		EXPECT_EQ((*result)->GetNetworkRegistries().GetTotalEntryCount(), 21u);
 		EXPECT_EQ((*result)->GetNetworkRegistries().GetEntriesWithDataCount(), 21u);
@@ -671,6 +737,66 @@ namespace Aurore::Tests {
 		EXPECT_EQ(result.error().Stage, VanillaDataImportStage::TargetValidation);
 		EXPECT_EQ(result.error().Generation, Aurore::Util::NoRegistryGeneration);
 		EXPECT_FALSE(result.error().SnapshotError.has_value());
+	}
+
+	TEST_F(VanillaDataImporterTests, RejectsMissingStaticRegistryDefinition) {
+		WriteFile(
+			"reports/registries.json",
+			R"json({
+				"minecraft:block": {
+					"entries": {
+						"minecraft:air": {
+							"protocol_id": 0
+						}
+					},
+					"protocol_id": 4
+				}
+			})json");
+
+		const auto result = VanillaDataImporter::Import(MakeCorpus(), 1);
+
+		ASSERT_FALSE(result.has_value());
+		EXPECT_EQ(result.error().Code, VanillaDataImportErrorCode::MissingField);
+		EXPECT_EQ(result.error().Stage, VanillaDataImportStage::StaticRegistries);
+		EXPECT_EQ(result.error().Path, m_Root / "reports" / "registries.json");
+		EXPECT_EQ(result.error().Field, "minecraft:item");
+	}
+
+	TEST_F(VanillaDataImporterTests, RejectsNonContiguousStaticProtocolIds) {
+		WriteFile(
+			"reports/registries.json",
+			R"json({
+				"minecraft:block": {
+					"entries": {
+						"minecraft:air": {
+							"protocol_id": 0
+						},
+						"minecraft:stone": {
+							"protocol_id": 2
+						}
+					},
+					"protocol_id": 4
+				},
+				"minecraft:item": {
+					"entries": {
+						"minecraft:air": {
+							"protocol_id": 0
+						}
+					},
+					"protocol_id": 7
+				}
+			})json");
+
+		const auto result = VanillaDataImporter::Import(MakeCorpus(), 1);
+
+		ASSERT_FALSE(result.has_value());
+		EXPECT_EQ(result.error().Code, VanillaDataImportErrorCode::InvalidFieldValue);
+		EXPECT_EQ(result.error().Stage, VanillaDataImportStage::StaticRegistries);
+		EXPECT_EQ(result.error().Path, m_Root / "reports" / "registries.json");
+		EXPECT_EQ(
+			result.error().Field,
+			"minecraft:block.entries.minecraft:stone.protocol_id");
+		EXPECT_FALSE(result.error().Detail.empty());
 	}
 
 	TEST_F(VanillaDataImporterTests, RejectsMissingDimensionTypeSource) {

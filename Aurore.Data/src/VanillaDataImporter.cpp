@@ -27,6 +27,9 @@ namespace Aurore::Data {
 
 		Aurore::Util::RegistrySnapshotBuilder builder;
 
+		const auto static_registries = Detail::ImportStaticRegistries(corpus, generation, builder);
+		if (!static_registries) return std::unexpected(static_registries.error());
+
 		const auto dimension_types = Detail::ImportDimensionTypes(corpus, generation, builder);
 		if (!dimension_types) return std::unexpected(dimension_types.error());
 
