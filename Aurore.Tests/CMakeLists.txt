@@ -15,6 +15,7 @@ set(
     LoginRequestTests.cpp
     MinecraftDataGeneratorTests.cpp
     MinecraftSourceTests.cpp
+    MojangMetadataTests.cpp
     NativeNetworkBackendTests.cpp
     NbtTests.cpp
     NetworkLoopbackClient.hpp
