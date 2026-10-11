@@ -1,5 +1,6 @@
 #include <Aurore/Data/DataPreparation.hpp>
 #include <Aurore/Data/DataPreparationService.hpp>
+#include <Aurore/Data/MinecraftSource.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -18,7 +19,7 @@ namespace {
 		std::string MinecraftVersion;
 		std::int32_t ProtocolVersion{ 0 };
 
-		std::filesystem::path JarPath;
+		std::optional<std::filesystem::path> JarPath;
 		std::filesystem::path OutputRoot;
 
 		std::optional<std::filesystem::path> JavaExecutable;
@@ -33,11 +34,16 @@ namespace {
 			<< "  Aurore.DataTool prepare-raw"
 			<< " --version <minecraft-version>"
 			<< " --protocol <protocol-version>"
-			<< " --jar <server.jar>"
 			<< " --output <cache-root>"
+			<< " [--jar <server.jar>]"
 			<< " [--java <java-executable>]"
 			<< " [--list-files]\n\n"
-			<< "Example:\n"
+			<< "Official source example:\n"
+			<< "  Aurore.DataTool prepare-raw"
+			<< " --version 1.21.11"
+			<< " --protocol 774"
+			<< " --output C:\\AuroreData\n\n"
+			<< "Local JAR override example:\n"
 			<< "  Aurore.DataTool prepare-raw"
 			<< " --version 1.21.11"
 			<< " --protocol 774"
@@ -118,10 +124,6 @@ namespace {
 			std::cerr << "Missing or invalid required --protocol.\n";
 			return std::nullopt;
 		}
-		if (options.JarPath.empty()) {
-			std::cerr << "Missing required --jar.\n";
-			return std::nullopt;
-		}
 		if (options.OutputRoot.empty()) {
 			std::cerr << "Missing required --output.\n";
 			return std::nullopt;
@@ -146,6 +148,14 @@ namespace {
 
 		if (!failure.StandardError.empty()) 
 			std::cerr << "\nstderr:\n" << failure.StandardError << "\n";
+	}
+
+	[[nodiscard]] std::string_view DescribeSourceKind(Aurore::Data::MinecraftSourceKind kind) {
+		switch (kind) {
+		case Aurore::Data::MinecraftSourceKind::LocalJar: return "local JAR";
+		case Aurore::Data::MinecraftSourceKind::OfficialDownload: return "official Mojang download";
+		}
+		return "unknown";
 	}
 
 	struct CorpusInventory {
@@ -235,15 +245,17 @@ namespace {
 	}
 
 	int RunPrepareRaw(const CommandLineOptions& options) {
+		Aurore::Data::MinecraftSource source = Aurore::Data::OfficialDownloadSource{};
+		if (options.JarPath)
+			source = Aurore::Data::LocalJarSource{ .JarPath = *options.JarPath };
+
 		auto request = Aurore::Data::DataPreparationRequest::Create(
 			Aurore::Data::DataPreparationOptions{
 				.Version = Aurore::Data::MinecraftVersion{
 					.Id = options.MinecraftVersion,
 					.ProtocolVersion = options.ProtocolVersion,
 				},
-				.Source = Aurore::Data::LocalJarSource{
-					.JarPath = options.JarPath,
-				},
+				.Source = std::move(source),
 				.CacheRoot = options.OutputRoot,
 			}
 		);
@@ -263,7 +275,16 @@ namespace {
 			<< "Raw Minecraft data generated successfully.\n\n"
 			<< "Minecraft version: " << result->Version.Id << "\n"
 			<< "Protocol version: " << result->Version.ProtocolVersion << "\n"
+			<< "Minecraft source: " << DescribeSourceKind(result->SourceKind) << "\n"
+			<< "Officially verified: " << (result->OfficiallyVerified ? "yes" : "no") << "\n";
+
+		if (result->RequiredJavaMajorVersion)
+			std::cout << "Source Java requirement: " << *result->RequiredJavaMajorVersion << "\n";
+		else std::cout << "Source Java requirement: not provided (Aurore target fallback applies)\n";
+
+		std::cout
 			<< "Source JAR: " << result->SourceJarPath.string() << "\n"
+			<< "Source size: " << result->SourceFileSize << " bytes\n"
 			<< "Source SHA-1: " << result->SourceSha1 << "\n"
 			<< "Java: " << result->JavaVersionText << " (major " << result->JavaMajorVersion << ")\n"
 			<< "Java executable: " << result->JavaExecutable.string() << "\n";
@@ -286,6 +307,14 @@ int main(int argc, char** argv) {
 	}
 
 	if (command == "prepare-raw") {
+		if (argc == 3) {
+			const std::string_view argument{ argv[2] };
+			if (argument == "--help" || argument == "-h") {
+				PrintUsage();
+				return 0;
+			}
+		}
+
 		const auto options = ParsePrepareRawOptions(argc, argv);
 		if (!options) return 2;
 		return RunPrepareRaw(*options);

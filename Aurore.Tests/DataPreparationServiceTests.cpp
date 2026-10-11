@@ -1,5 +1,6 @@
 #include <Aurore/Data/DataPreparation.hpp>
 #include <Aurore/Data/DataPreparationService.hpp>
+#include <Aurore/Data/MinecraftSource.hpp>
 
 #include <gtest/gtest.h>
 
@@ -15,26 +16,14 @@
 
 namespace Aurore::Tests {
 	namespace {
-		using Aurore::Data::
-			DataPreparationOptions;
-
-		using Aurore::Data::
-			DataPreparationRequest;
-
-		using Aurore::Data::
-			DataPreparationRuntimeOptions;
-
-		using Aurore::Data::
-			DataPreparationService;
-
-		using Aurore::Data::
-			LocalJarSource;
-
-		using Aurore::Data::
-			MinecraftVersion;
-
-		using Aurore::Data::
-			RawDataPreparationErrorCode;
+		using Aurore::Data::DataPreparationOptions;
+		using Aurore::Data::DataPreparationRequest;
+		using Aurore::Data::DataPreparationRuntimeOptions;
+		using Aurore::Data::DataPreparationService;
+		using Aurore::Data::LocalJarSource;
+		using Aurore::Data::MinecraftSourceKind;
+		using Aurore::Data::MinecraftVersion;
+		using Aurore::Data::RawDataPreparationErrorCode;
 
 		[[nodiscard]]
 		std::filesystem::path HelperPath() {
@@ -155,6 +144,18 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			result->Version.ProtocolVersion,
 			774);
+
+		EXPECT_EQ(
+			result->SourceKind,
+			MinecraftSourceKind::
+				LocalJar);
+
+		EXPECT_FALSE(
+			result->OfficiallyVerified);
+
+		EXPECT_FALSE(
+			result->RequiredJavaMajorVersion
+				.has_value());
 
 		EXPECT_TRUE(
 			result->SourceJarPath

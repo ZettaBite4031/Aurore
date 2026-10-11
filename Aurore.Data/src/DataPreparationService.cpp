@@ -130,12 +130,18 @@ namespace Aurore::Data {
 
 		return RawDataPreparationResult{
 			.Version = generated->Version,
+
+			.SourceKind = source->SourceKind,
 			.SourceJarPath = source->JarPath,
 			.SourceFileSize = source->FileSize,
 			.SourceSha1 = source->Sha1,
+			.RequiredJavaMajorVersion = source->RequiredJavaMajorVersion,
+			.OfficiallyVerified = source->OfficiallyVerified,
+
 			.JavaExecutable = java->Executable,
 			.JavaMajorVersion = java->MajorVersion,
 			.JavaVersionText = java->VersionText,
+
 			.GenerationRoot = generated->Root,
 			.ReportsRoot = generated->ReportsRoot,
 			.DataRoot = generated->DataRoot,

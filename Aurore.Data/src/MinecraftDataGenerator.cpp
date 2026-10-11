@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -14,7 +15,12 @@ namespace {
 	using Aurore::Data::Detail::Process;
 	using Aurore::Data::Detail::ProcessRequest;
 
-	inline constexpr std::uint32_t MinimumJavaMajor{ 21 };
+	/*
+		Local JAR sources do not carry authoritative Mojang metadata.
+		Aurore currently targets Minecraft 1.21.11, whose generator
+		requires Java 21, so retain that as the local-source fallback.
+	*/
+	inline constexpr std::uint32_t FallbackRequiredJavaMajor{ 21 };
 
 	[[nodiscard]] MinecraftDataGeneratorError MakeError(MinecraftDataGeneratorErrorCode code, std::filesystem::path path = {}, std::error_code system_error = {}) {
 		return MinecraftDataGeneratorError{ .Code = code, .Path = std::move(path), .SystemError = system_error };
@@ -22,7 +28,9 @@ namespace {
 
 	[[nodiscard]] bool IsSha1(std::string_view value) noexcept {
 		if (value.size() != 40) return false;
-		return std::ranges::all_of(value, [](char character) { return std::isxdigit(static_cast<unsigned char>(character)) != 0; });
+		return std::ranges::all_of(value, [](char character) {
+			return std::isxdigit(static_cast<unsigned char>(character)) != 0;
+		});
 	}
 
 	[[nodiscard]] std::string PathToUtf8(const std::filesystem::path& path) {
@@ -39,22 +47,14 @@ namespace Aurore::Data::Detail {
 			In particular, the digest becomes part of a filesystem
 			path below and therefore must never be trusted blindly.
 		*/
-		if (source.JarPath.empty() || source.RequestedVersion.Id.empty() || !IsSha1(source.Sha1))
+		if (source.JarPath.empty() || source.RequestedVersion.Id.empty() || !IsSha1(source.Sha1) || (source.RequiredJavaMajorVersion && *source.RequiredJavaMajorVersion == 0))
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::InvalidSourceArtifact));
 
 		if (java.Executable.empty() || java.MajorVersion == 0)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::InvalidJavaRuntime));
 
-		/*
-			Aurore's current compatibility target is Minecraft
-			1.21.11, whose toolchain requires the modern Java 21
-			runtime generation.
-
-			Keep this compatibility decision here rather than in
-			JavaRuntimeResolver. The resolver identifies Java;
-			Minecraft policy decides whether that Java is suitable.
-		*/
-		if (java.MajorVersion < MinimumJavaMajor)
+		const std::uint32_t required_java_major = source.RequiredJavaMajorVersion.value_or(FallbackRequiredJavaMajor);
+		if (java.MajorVersion < required_java_major)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::IncompatibleJavaVersion, java.Executable));
 
 		if (staging_root.empty())
@@ -67,12 +67,6 @@ namespace Aurore::Data::Detail {
 
 		resolved_staging_root = resolved_staging_root.lexically_normal();
 
-		/*
-			The source digest gives each exact server artifact its
-			own deterministic staging location. Re-running generation
-			for the same bytes replaces only that artifact's staging
-			tree.
-		*/
 		const auto generation_root = resolved_staging_root / "minecraft" / source.Sha1;
 		std::filesystem::remove_all(generation_root, error);
 		if (error)
@@ -82,7 +76,9 @@ namespace Aurore::Data::Detail {
 		if (error)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::StagingDirectoryCreationFailed, generation_root, error));
 
-		const auto process = Process::Run(ProcessRequest{ .Executable = java.Executable, .Arguments = {
+		const auto process = Process::Run(ProcessRequest{
+			.Executable = java.Executable,
+			.Arguments = {
 				"-DbundlerMainClass=net.minecraft.data.Main",
 				"-jar",
 				PathToUtf8(source.JarPath),
@@ -90,7 +86,11 @@ namespace Aurore::Data::Detail {
 				"--reports",
 				"--output",
 				PathToUtf8(generation_root),
-			}, .WorkingDirectory = generation_root, .MaximumStandardOutputBytes = 16 * 1024 * 1024, .MaximumStandardErrorBytes = 16 * 1024 * 1024 });
+			},
+			.WorkingDirectory = generation_root,
+			.MaximumStandardOutputBytes = 16 * 1024 * 1024,
+			.MaximumStandardErrorBytes = 16 * 1024 * 1024,
+		});
 
 		if (!process) {
 			auto result = MakeError(MinecraftDataGeneratorErrorCode::ProcessFailed, java.Executable);
@@ -113,35 +113,30 @@ namespace Aurore::Data::Detail {
 
 		error.clear();
 		const bool registry_report_exists = std::filesystem::exists(registry_report, error);
-		if (error) 
+		if (error)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::OutputInspectionFailed, registry_report, error));
-
-		if (!registry_report_exists) 
+		if (!registry_report_exists)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::RegistryReportMissing, registry_report));
 
 		error.clear();
 		const bool registry_report_regular = std::filesystem::is_regular_file(registry_report, error);
-		if (error) 
+		if (error)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::OutputInspectionFailed, registry_report, error));
-
 		if (!registry_report_regular)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::RegistryReportMissing, registry_report));
 
 		error.clear();
 		const bool minecraft_data_exists = std::filesystem::exists(minecraft_data, error);
-		if (error) 
+		if (error)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::OutputInspectionFailed, minecraft_data, error));
-
-		if (!minecraft_data_exists) 
+		if (!minecraft_data_exists)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::ServerDataMissing, minecraft_data));
 
 		error.clear();
 		const bool minecraft_data_directory = std::filesystem::is_directory(minecraft_data, error);
-
-		if (error) 
+		if (error)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::OutputInspectionFailed, minecraft_data, error));
-
-		if (!minecraft_data_directory) 
+		if (!minecraft_data_directory)
 			return std::unexpected(MakeError(MinecraftDataGeneratorErrorCode::ServerDataMissing, minecraft_data));
 
 		return MinecraftGeneratedData{

@@ -5,8 +5,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -16,36 +18,21 @@
 
 namespace Aurore::Tests {
 	namespace {
-		using Aurore::Data::
-			MinecraftSourceArtifact;
-
-		using Aurore::Data::
-			MinecraftSourceKind;
-
-		using Aurore::Data::
-			MinecraftVersion;
-
-		using Aurore::Data::Detail::
-			JavaRuntime;
-
-		using Aurore::Data::Detail::
-			JavaRuntimeSource;
-
-		using Aurore::Data::Detail::
-			MinecraftDataGenerator;
-
-		using Aurore::Data::Detail::
-			MinecraftDataGeneratorErrorCode;
+		using Aurore::Data::MinecraftSourceArtifact;
+		using Aurore::Data::MinecraftSourceKind;
+		using Aurore::Data::MinecraftVersion;
+		using Aurore::Data::Detail::JavaRuntime;
+		using Aurore::Data::Detail::JavaRuntimeSource;
+		using Aurore::Data::Detail::MinecraftDataGenerator;
+		using Aurore::Data::Detail::MinecraftDataGeneratorErrorCode;
 
 		inline constexpr std::string_view
 			TestSha1{
 				"0123456789abcdef0123456789abcdef01234567"
-		};
+			};
 
 		[[nodiscard]]
-		std::filesystem::path
-			HelperPath() {
-
+		std::filesystem::path HelperPath() {
 			return std::filesystem::path{
 				AURORE_PROCESS_TEST_HELPER_PATH
 			};
@@ -58,7 +45,7 @@ namespace Aurore::Tests {
 			void SetUp() override {
 				m_Root =
 					std::filesystem::
-					temp_directory_path()
+						temp_directory_path()
 					/ "aurore-data-generator-tests";
 
 				std::error_code error;
@@ -98,14 +85,18 @@ namespace Aurore::Tests {
 					.MajorVersion =
 						major,
 					.VersionText =
-						std::to_string(major),
+						std::to_string(
+							major),
 				};
 			}
 
 			[[nodiscard]]
 			MinecraftSourceArtifact MakeSource(
 				std::string_view jar_name =
-				"server.jar") {
+					"server.jar",
+				std::optional<std::uint32_t>
+					required_java =
+						std::nullopt) {
 
 				const auto jar =
 					m_Root
@@ -119,14 +110,18 @@ namespace Aurore::Tests {
 				EXPECT_TRUE(
 					stream.is_open());
 
-				stream << "fake-server-jar";
+				stream
+					<< "fake-server-jar";
+
 				stream.close();
 
 				return MinecraftSourceArtifact{
 					.RequestedVersion =
 						MinecraftVersion{
-							.Id = "1.21.11",
-							.ProtocolVersion = 774,
+							.Id =
+								"1.21.11",
+							.ProtocolVersion =
+								774,
 						},
 					.JarPath =
 						std::filesystem::
@@ -139,12 +134,16 @@ namespace Aurore::Tests {
 						std::string{
 							TestSha1
 						},
+					.RequiredJavaMajorVersion =
+						required_java,
+					.OfficiallyVerified =
+						false,
 				};
 			}
 
 			[[nodiscard]]
 			std::filesystem::path
-				ExpectedGenerationRoot() const {
+			ExpectedGenerationRoot() const {
 
 				return std::filesystem::
 					absolute(
@@ -157,24 +156,21 @@ namespace Aurore::Tests {
 			std::filesystem::path m_Root;
 		};
 	}
+
 	TEST_F(
 		MinecraftDataGeneratorTests,
 		GeneratesValidatedRawMinecraftData) {
 
-		const auto source =
-			MakeSource();
-
-		const auto java =
-			MakeJava();
-
 		const auto result =
 			MinecraftDataGenerator::
-			Generate(
-				source,
-				java,
-				m_Root / "staging");
+				Generate(
+					MakeSource(),
+					MakeJava(),
+					m_Root
+						/ "staging");
 
-		ASSERT_TRUE(result.has_value());
+		ASSERT_TRUE(
+			result.has_value());
 
 		EXPECT_EQ(
 			result->Version.Id,
@@ -194,27 +190,28 @@ namespace Aurore::Tests {
 
 		EXPECT_TRUE(
 			std::filesystem::
-			is_regular_file(
-				result->ReportsRoot
-				/ "registries.json"));
+				is_regular_file(
+					result->ReportsRoot
+					/ "registries.json"));
 
 		EXPECT_TRUE(
 			std::filesystem::
-			is_directory(
-				result->DataRoot
-				/ "minecraft"));
+				is_directory(
+					result->DataRoot
+					/ "minecraft"));
 	}
 
 	TEST_F(
 		MinecraftDataGeneratorTests,
-		RejectsIncompatibleJavaRuntime) {
+		RejectsIncompatibleFallbackJavaRuntime) {
 
 		const auto result =
 			MinecraftDataGenerator::
-			Generate(
-				MakeSource(),
-				MakeJava(17),
-				m_Root / "staging");
+				Generate(
+					MakeSource(),
+					MakeJava(17),
+					m_Root
+						/ "staging");
 
 		ASSERT_FALSE(
 			result.has_value());
@@ -222,7 +219,71 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			result.error().Code,
 			MinecraftDataGeneratorErrorCode::
-			IncompatibleJavaVersion);
+				IncompatibleJavaVersion);
+	}
+
+	TEST_F(
+		MinecraftDataGeneratorTests,
+		RejectsRuntimeBelowSourceJavaRequirement) {
+
+		const auto result =
+			MinecraftDataGenerator::
+				Generate(
+					MakeSource(
+						"server.jar",
+						25),
+					MakeJava(21),
+					m_Root
+						/ "staging");
+
+		ASSERT_FALSE(
+			result.has_value());
+
+		EXPECT_EQ(
+			result.error().Code,
+			MinecraftDataGeneratorErrorCode::
+				IncompatibleJavaVersion);
+	}
+
+	TEST_F(
+		MinecraftDataGeneratorTests,
+		AcceptsRuntimeMeetingSourceJavaRequirement) {
+
+		const auto result =
+			MinecraftDataGenerator::
+				Generate(
+					MakeSource(
+						"server.jar",
+						25),
+					MakeJava(26),
+					m_Root
+						/ "staging");
+
+		ASSERT_TRUE(
+			result.has_value());
+	}
+
+	TEST_F(
+		MinecraftDataGeneratorTests,
+		RejectsZeroSourceJavaRequirement) {
+
+		const auto result =
+			MinecraftDataGenerator::
+				Generate(
+					MakeSource(
+						"server.jar",
+						0),
+					MakeJava(26),
+					m_Root
+						/ "staging");
+
+		ASSERT_FALSE(
+			result.has_value());
+
+		EXPECT_EQ(
+			result.error().Code,
+			MinecraftDataGeneratorErrorCode::
+				InvalidSourceArtifact);
 	}
 
 	TEST_F(
@@ -231,11 +292,12 @@ namespace Aurore::Tests {
 
 		const auto result =
 			MinecraftDataGenerator::
-			Generate(
-				MakeSource(
-					"generator-failure.jar"),
-				MakeJava(),
-				m_Root / "staging");
+				Generate(
+					MakeSource(
+						"generator-failure.jar"),
+					MakeJava(),
+					m_Root
+						/ "staging");
 
 		ASSERT_FALSE(
 			result.has_value());
@@ -243,7 +305,7 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			result.error().Code,
 			MinecraftDataGeneratorErrorCode::
-			GeneratorFailed);
+				GeneratorFailed);
 
 		EXPECT_EQ(
 			result.error().ExitCode,
@@ -261,11 +323,12 @@ namespace Aurore::Tests {
 
 		const auto result =
 			MinecraftDataGenerator::
-			Generate(
-				MakeSource(
-					"missing-registry-report.jar"),
-				MakeJava(),
-				m_Root / "staging");
+				Generate(
+					MakeSource(
+						"missing-registry-report.jar"),
+					MakeJava(),
+					m_Root
+						/ "staging");
 
 		ASSERT_FALSE(
 			result.has_value());
@@ -273,7 +336,7 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			result.error().Code,
 			MinecraftDataGeneratorErrorCode::
-			RegistryReportMissing);
+				RegistryReportMissing);
 	}
 
 	TEST_F(
@@ -282,11 +345,12 @@ namespace Aurore::Tests {
 
 		const auto result =
 			MinecraftDataGenerator::
-			Generate(
-				MakeSource(
-					"missing-server-data.jar"),
-				MakeJava(),
-				m_Root / "staging");
+				Generate(
+					MakeSource(
+						"missing-server-data.jar"),
+					MakeJava(),
+					m_Root
+						/ "staging");
 
 		ASSERT_FALSE(
 			result.has_value());
@@ -294,7 +358,7 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			result.error().Code,
 			MinecraftDataGeneratorErrorCode::
-			ServerDataMissing);
+				ServerDataMissing);
 	}
 
 	TEST_F(
@@ -317,7 +381,8 @@ namespace Aurore::Tests {
 			ASSERT_TRUE(
 				stream.is_open());
 
-			stream << "stale";
+			stream
+				<< "stale";
 		}
 
 		ASSERT_TRUE(
@@ -326,12 +391,14 @@ namespace Aurore::Tests {
 
 		const auto result =
 			MinecraftDataGenerator::
-			Generate(
-				MakeSource(),
-				MakeJava(),
-				m_Root / "staging");
+				Generate(
+					MakeSource(),
+					MakeJava(),
+					m_Root
+						/ "staging");
 
-		ASSERT_TRUE(result.has_value());
+		ASSERT_TRUE(
+			result.has_value());
 
 		EXPECT_FALSE(
 			std::filesystem::exists(
@@ -339,9 +406,9 @@ namespace Aurore::Tests {
 
 		EXPECT_TRUE(
 			std::filesystem::
-			is_regular_file(
-				result->ReportsRoot
-				/ "registries.json"));
+				is_regular_file(
+					result->ReportsRoot
+					/ "registries.json"));
 	}
 
 	TEST_F(
@@ -356,10 +423,11 @@ namespace Aurore::Tests {
 
 		const auto result =
 			MinecraftDataGenerator::
-			Generate(
-				source,
-				MakeJava(),
-				m_Root / "staging");
+				Generate(
+					source,
+					MakeJava(),
+					m_Root
+						/ "staging");
 
 		ASSERT_FALSE(
 			result.has_value());
@@ -367,8 +435,6 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			result.error().Code,
 			MinecraftDataGeneratorErrorCode::
-			InvalidSourceArtifact);
+				InvalidSourceArtifact);
 	}
-
-
 }

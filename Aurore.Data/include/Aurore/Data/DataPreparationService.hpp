@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Aurore/Data/DataPreparation.hpp>
+#include <Aurore/Data/MinecraftSource.hpp>
 
 #include <cstdint>
 #include <expected>
@@ -17,9 +18,13 @@ namespace Aurore::Data {
 	struct RawDataPreparationResult final {
 		MinecraftVersion Version;
 
+		MinecraftSourceKind SourceKind{ MinecraftSourceKind::LocalJar };
 		std::filesystem::path SourceJarPath;
 		std::uintmax_t SourceFileSize{ 0 };
 		std::string SourceSha1;
+
+		std::optional<std::uint32_t> RequiredJavaMajorVersion;
+		bool OfficiallyVerified{ false };
 
 		std::filesystem::path JavaExecutable;
 		std::uint32_t JavaMajorVersion{ 0 };
