@@ -1,6 +1,9 @@
 add_executable(
     aurore_server
+
     main.cpp
+    ProductionBootstrap.cpp
+    ProductionBootstrap.hpp
 )
 
 add_executable(Aurore::Server ALIAS aurore_server)
