@@ -1,558 +1,204 @@
-#include <Aurore/Core/RegistrySnapshotStore.hpp>
 #include <Aurore/Core/SyntheticRegistrySnapshot.hpp>
 
 #include <Aurore/Protocol/ConfigurationSequence.hpp>
-#include <Aurore/Protocol/Packets/Configuration.hpp>
+#include <Aurore/Protocol/RegistryCompatibility.hpp>
 
-#include <Aurore/Util/ByteBuffer.hpp>
-#include <Aurore/Util/NbtBinary.hpp>
+#include <Aurore/Util/Nbt.hpp>
 #include <Aurore/Util/RegistrySnapshot.hpp>
-#include <Aurore/Util/ResourceLocation.hpp>
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
 #include <array>
-#include <cstddef>
-#include <cstdint>
 #include <memory>
-#include <span>
+#include <optional>
 #include <stdexcept>
-#include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
-#include <vector>
 
 namespace Aurore::Tests {
 	namespace {
-		namespace Configuration =
-			Aurore::Protocol::Packets::Configuration;
+		namespace Configuration = Aurore::Protocol::Packets::Configuration;
 
-		using Aurore::Core::RegistrySnapshotStore;
 		using Aurore::Core::SyntheticRegistrySnapshotFactory;
 		using Aurore::Protocol::ConfigurationSequenceBuilder;
 		using Aurore::Protocol::ConfigurationSequenceErrorCode;
 		using Aurore::Protocol::ConfigurationSequencePolicy;
-		using Aurore::Protocol::ConfigurationSequenceStage;
-		using Aurore::Protocol::ConfigurationTransmissionPlan;
-		using Aurore::Protocol::PacketFrame;
-		using Aurore::Util::ByteReader;
+		using Aurore::Protocol::RegistryCompatibilityEvidence;
+		using Aurore::Protocol::RegistryCompatibilityManifest;
+		using Aurore::Protocol::RegistryCompatibilityRule;
+		using Aurore::Protocol::RegistryEntryDataPolicy;
+		using Aurore::Protocol::RegistryManifestCompleteness;
+		using Aurore::Protocol::RegistryPresence;
+		using Aurore::Protocol::RegistryRepresentation;
+		using Aurore::Protocol::RegistryTagPolicy;
 		using Aurore::Util::NbtCompound;
-		using Aurore::Util::NbtReader;
-		using Aurore::Util::RegistryGeneration;
-		using Aurore::Util::RegistryKind;
+		using Aurore::Util::NbtString;
+		using Aurore::Util::NbtValue;
 		using Aurore::Util::RegistrySnapshot;
 		using Aurore::Util::RegistrySnapshotBuilder;
 		using Aurore::Util::ResourceLocation;
 
-		[[nodiscard]] ResourceLocation ParseRequired(
-			std::string_view value) {
-
+		[[nodiscard]] ResourceLocation Location(std::string_view value) {
 			auto result = ResourceLocation::Parse(value);
-			if (!result)
-				throw std::runtime_error(
-					"Invalid ResourceLocation test fixture.");
-
+			if (!result) throw std::runtime_error("Invalid ResourceLocation fixture.");
 			return std::move(*result);
 		}
 
-		[[nodiscard]] std::shared_ptr<const RegistrySnapshot>
-		BuildSyntheticSnapshot(RegistryGeneration generation) {
-			auto result = SyntheticRegistrySnapshotFactory::Build(generation);
-			if (!result)
-				throw std::runtime_error(
-					"Synthetic registry snapshot construction failed.");
-
-			return std::move(*result);
+		[[nodiscard]] std::shared_ptr<const RegistryCompatibilityManifest> BuiltInManifest() {
+			auto manifest = Aurore::Protocol::Protocol774RegistryManifest::Build();
+			if (!manifest) throw std::runtime_error("Failed to build protocol-774 manifest fixture.");
+			return std::make_shared<const RegistryCompatibilityManifest>(std::move(*manifest));
 		}
 
 		[[nodiscard]] ConfigurationSequencePolicy MakePolicy() {
 			return ConfigurationSequencePolicy{
-				.EnabledFeatures = {
-					ParseRequired("minecraft:vanilla"),
-				},
+				.EnabledFeatures = { Location("minecraft:vanilla") },
 				.KnownPacks = {},
+				.RegistryManifest = BuiltInManifest(),
 			};
 		}
 
-		void ExpectFramesEqual(
-			std::span<const PacketFrame> first,
-			std::span<const PacketFrame> second) {
-
-			ASSERT_EQ(first.size(), second.size());
-
-			for (std::size_t index{ 0 }; index < first.size(); ++index) {
-				EXPECT_EQ(first[index].PacketId, second[index].PacketId);
-				EXPECT_EQ(first[index].Payload, second[index].Payload);
-			}
+		[[nodiscard]] std::shared_ptr<const RegistrySnapshot> SyntheticSnapshot() {
+			auto snapshot = SyntheticRegistrySnapshotFactory::Build(1);
+			if (!snapshot) throw std::runtime_error("Failed to build synthetic snapshot fixture.");
+			return std::move(*snapshot);
 		}
 
-		struct DecodedSingleRegistryPacket final {
-			std::string RegistryKey;
-			std::string EntryKey;
-			NbtCompound Value;
-		};
-
-		[[nodiscard]] DecodedSingleRegistryPacket DecodeSingleRegistryPacket(
-			const PacketFrame& frame) {
-
-			if (frame.PacketId
-				!= Configuration::Clientbound::RegistryDataPacketId) {
-
-				throw std::runtime_error(
-					"Unexpected packet ID in registry packet fixture.");
-			}
-
-			ByteReader reader(frame.Payload);
-
-			auto registry_key = reader.ReadString(32'767);
-			auto entry_count = reader.ReadVarInt();
-			auto entry_key = reader.ReadString(32'767);
-			auto has_value = reader.ReadBool();
-
-			if (!registry_key
-				|| !entry_count
-				|| *entry_count != 1
-				|| !entry_key
-				|| !has_value
-				|| !*has_value) {
-
-				throw std::runtime_error(
-					"Malformed registry packet generated by test fixture.");
-			}
-
-			const auto remaining = std::span<const std::byte>(frame.Payload)
-				.subspan(reader.Position());
-
-			auto value = NbtReader::ReadNetworkCompound(remaining);
-			if (!value || value->BytesConsumed != remaining.size())
-				throw std::runtime_error(
-					"Malformed registry NBT generated by test fixture.");
-
-			return DecodedSingleRegistryPacket{
-				.RegistryKey = std::move(*registry_key),
-				.EntryKey = std::move(*entry_key),
-				.Value = std::move(value->Value),
+		[[nodiscard]] RegistryCompatibilityRule GenericRule(std::string_view key) {
+			return RegistryCompatibilityRule{
+				.Key = Location(key),
+				.Presence = RegistryPresence::Required,
+				.EntryData = RegistryEntryDataPolicy::Required,
+				.Tags = RegistryTagPolicy::Optional,
+				.Representation = RegistryRepresentation::GenericNetwork,
+				.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
+				.MinimumEntries = 1,
+				.SchemaContract = "aurore_test:generic@1",
+				.SourceCodec = "aurore_test:generic",
 			};
+		}
+
+		[[nodiscard]] std::shared_ptr<const RegistryCompatibilityManifest> SingleRegistryManifest(RegistryCompatibilityRule rule) {
+			auto manifest = RegistryCompatibilityManifest::Create(
+				"1.21.11", Configuration::TargetProtocolVersion, RegistryManifestCompleteness::Complete, { std::move(rule) });
+			if (!manifest) throw std::runtime_error("Failed to build registry manifest fixture.");
+			return std::make_shared<const RegistryCompatibilityManifest>(std::move(*manifest));
+		}
+
+		[[nodiscard]] std::shared_ptr<const RegistrySnapshot> GenericSnapshot(const ResourceLocation& registry_key, std::optional<NbtCompound> data) {
+			RegistrySnapshotBuilder builder;
+			auto registry = builder.NetworkRegistries().CreateRegistryBuilder(registry_key);
+			if (!registry.Declare(Location("aurore_test:entry"), std::move(data)))
+				throw std::runtime_error("Failed to declare generic registry entry.");
+			auto built = std::move(registry).Build();
+			if (!built || !builder.NetworkRegistries().Declare(std::move(*built)))
+				throw std::runtime_error("Failed to build generic registry fixture.");
+			auto snapshot = std::move(builder).Build(1);
+			if (!snapshot) throw std::runtime_error("Failed to build generic snapshot fixture.");
+			return std::move(*snapshot);
+		}
+
+		[[nodiscard]] NbtCompound Data() {
+			NbtCompound data;
+			data.Set(NbtString{ u"value" }, NbtValue::Int(1));
+			return data;
 		}
 	}
 
 	TEST(ConfigurationSequenceTests, RejectsMissingSnapshot) {
-		const auto result = ConfigurationSequenceBuilder::Build(
-			nullptr,
-			MakePolicy());
-
+		const auto result = ConfigurationSequenceBuilder::Build(nullptr, MakePolicy());
 		ASSERT_FALSE(result.has_value());
-		EXPECT_EQ(
-			result.error().Code,
-			ConfigurationSequenceErrorCode::MissingSnapshot);
-		EXPECT_EQ(
-			result.error().Stage,
-			ConfigurationSequenceStage::SnapshotValidation);
-		EXPECT_EQ(
-			result.error().Generation,
-			Aurore::Util::NoRegistryGeneration);
+		EXPECT_EQ(result.error().Code, ConfigurationSequenceErrorCode::MissingSnapshot);
 	}
 
-	TEST(ConfigurationSequenceTests, RejectsMissingRequiredRegistryData) {
-		auto snapshot = std::move(RegistrySnapshotBuilder{}).Build(1);
-		ASSERT_TRUE(snapshot.has_value());
-
-		const auto result = ConfigurationSequenceBuilder::Build(
-			*snapshot,
-			MakePolicy());
-
-		ASSERT_FALSE(result.has_value());
-		EXPECT_EQ(
-			result.error().Code,
-			ConfigurationSequenceErrorCode::MissingRequiredRegistryData);
-		EXPECT_EQ(
-			result.error().Registry,
-			RegistryKind::DimensionType);
-	}
-
-	TEST(ConfigurationSequenceTests, RejectsDuplicateFeatureFlags) {
-		auto snapshot = BuildSyntheticSnapshot(1);
+	TEST(ConfigurationSequenceTests, RejectsMissingManifest) {
 		auto policy = MakePolicy();
-		policy.EnabledFeatures.push_back(policy.EnabledFeatures.front());
-
-		const auto result = ConfigurationSequenceBuilder::Build(
-			snapshot,
-			policy);
-
+		policy.RegistryManifest.reset();
+		const auto result = ConfigurationSequenceBuilder::Build(SyntheticSnapshot(), policy);
 		ASSERT_FALSE(result.has_value());
-		EXPECT_EQ(
-			result.error().Code,
-			ConfigurationSequenceErrorCode::DuplicateFeatureFlag);
-		EXPECT_EQ(
-			result.error().Stage,
-			ConfigurationSequenceStage::PolicyValidation);
-		EXPECT_EQ(result.error().Index, 1u);
-		EXPECT_EQ(result.error().ExistingIndex, 0u);
-		EXPECT_EQ(
-			result.error().Key,
-			policy.EnabledFeatures.front());
+		EXPECT_EQ(result.error().Code, ConfigurationSequenceErrorCode::MissingRegistryManifest);
 	}
 
-	TEST(ConfigurationSequenceTests, RejectsDuplicateKnownPacks) {
-		auto snapshot = BuildSyntheticSnapshot(1);
-		auto policy = MakePolicy();
-
-		const Configuration::KnownPack pack{
-			.Namespace = "aurore_test",
-			.Id = "synthetic",
-			.Version = "1",
-		};
-
-		policy.KnownPacks = { pack, pack };
-
-		const auto result = ConfigurationSequenceBuilder::Build(
-			snapshot,
-			policy);
-
-		ASSERT_FALSE(result.has_value());
-		EXPECT_EQ(
-			result.error().Code,
-			ConfigurationSequenceErrorCode::DuplicateKnownPack);
-		EXPECT_EQ(result.error().Pack, pack);
-		EXPECT_EQ(result.error().Index, 1u);
-		EXPECT_EQ(result.error().ExistingIndex, 0u);
+	TEST(ConfigurationSequenceTests, BuildsOnlyNegotiationFramesInitially) {
+		auto plan = ConfigurationSequenceBuilder::Build(SyntheticSnapshot(), MakePolicy());
+		ASSERT_TRUE(plan.has_value());
+		ASSERT_EQ(plan->GetInitialFrames().size(), 2u);
+		EXPECT_EQ(plan->GetInitialFrames()[0].PacketId, Configuration::Clientbound::FeatureFlagsPacketId);
+		EXPECT_EQ(plan->GetInitialFrames()[1].PacketId, Configuration::Clientbound::SelectKnownPacksPacketId);
 	}
 
-	TEST(ConfigurationSequenceTests, RetainsSnapshotAndGeneration) {
-		auto snapshot = BuildSyntheticSnapshot(7);
+	TEST(ConfigurationSequenceTests, MaterializesSyntheticDataAfterKnownPackSelection) {
+		auto plan = ConfigurationSequenceBuilder::Build(SyntheticSnapshot(), MakePolicy());
+		ASSERT_TRUE(plan.has_value());
+		ASSERT_EQ(plan->ReleaseInitialFrames().size(), 2u);
 
-		const auto result = ConfigurationSequenceBuilder::Build(
-			snapshot,
-			MakePolicy());
-
-		ASSERT_TRUE(result.has_value());
-		EXPECT_EQ(result->GetGeneration(), 7u);
-		EXPECT_EQ(result->GetSnapshot().get(), snapshot.get());
+		auto frames = plan->MaterializePostNegotiationFrames({});
+		ASSERT_TRUE(frames.has_value());
+		ASSERT_EQ(frames->size(), 4u);
+		EXPECT_EQ((*frames)[0].PacketId, Configuration::Clientbound::RegistryDataPacketId);
+		EXPECT_EQ((*frames)[1].PacketId, Configuration::Clientbound::RegistryDataPacketId);
+		EXPECT_EQ((*frames)[2].PacketId, Configuration::Clientbound::TagsPacketId);
+		EXPECT_EQ((*frames)[3].PacketId, Configuration::Clientbound::FinishConfigurationPacketId);
 	}
 
-	TEST(ConfigurationSequenceTests, BuildsExpectedFrameSections) {
-		auto snapshot = BuildSyntheticSnapshot(1);
-
-		const auto result = ConfigurationSequenceBuilder::Build(
-			snapshot,
-			MakePolicy());
-
-		ASSERT_TRUE(result.has_value());
-
-		const auto initial = result->GetInitialFrames();
-		ASSERT_EQ(initial.size(), 2u);
-		EXPECT_EQ(
-			initial[0].PacketId,
-			Configuration::Clientbound::FeatureFlagsPacketId);
-		EXPECT_EQ(
-			initial[1].PacketId,
-			Configuration::Clientbound::SelectKnownPacksPacketId);
-
-		const auto post_negotiation =
-			result->GetPostNegotiationFrames();
-
-		ASSERT_EQ(post_negotiation.size(), 4u);
-		EXPECT_EQ(
-			post_negotiation[0].PacketId,
-			Configuration::Clientbound::RegistryDataPacketId);
-		EXPECT_EQ(
-			post_negotiation[1].PacketId,
-			Configuration::Clientbound::RegistryDataPacketId);
-		EXPECT_EQ(
-			post_negotiation[2].PacketId,
-			Configuration::Clientbound::TagsPacketId);
-		EXPECT_EQ(
-			post_negotiation[3].PacketId,
-			Configuration::Clientbound::FinishConfigurationPacketId);
-		EXPECT_TRUE(post_negotiation[3].Payload.empty());
-	}
-
-	TEST(ConfigurationSequenceTests, PreservesFeatureAndKnownPackPolicyOrder) {
-		auto snapshot = BuildSyntheticSnapshot(1);
+	TEST(ConfigurationSequenceTests, GenericRegistryNeedsNoSequenceBranch) {
+		const auto key = Location("aurore_test:dynamic_registry");
 		ConfigurationSequencePolicy policy{
-			.EnabledFeatures = {
-				ParseRequired("minecraft:vanilla"),
-				ParseRequired("aurore_test:feature"),
-			},
-			.KnownPacks = {
-				{
-					.Namespace = "aurore_test",
-					.Id = "first",
-					.Version = "1",
-				},
-				{
-					.Namespace = "aurore_test",
-					.Id = "second",
-					.Version = "2",
-				},
-			},
+			.EnabledFeatures = { Location("minecraft:vanilla") },
+			.RegistryManifest = SingleRegistryManifest(GenericRule("aurore_test:dynamic_registry")),
 		};
 
-		const auto result = ConfigurationSequenceBuilder::Build(
-			snapshot,
-			policy);
+		auto plan = ConfigurationSequenceBuilder::Build(GenericSnapshot(key, Data()), policy);
+		ASSERT_TRUE(plan.has_value());
+		ASSERT_EQ(plan->ReleaseInitialFrames().size(), 2u);
 
-		ASSERT_TRUE(result.has_value());
-		const auto offered = result->GetOfferedKnownPacks();
-		ASSERT_EQ(offered.size(), policy.KnownPacks.size());
-		EXPECT_TRUE(std::equal(
-			offered.begin(),
-			offered.end(),
-			policy.KnownPacks.begin()));
-
-		const auto initial = result->GetInitialFrames();
-		ByteReader feature_reader(initial[0].Payload);
-
-		const auto feature_count = feature_reader.ReadVarInt();
-		const auto first_feature = feature_reader.ReadString(32'767);
-		const auto second_feature = feature_reader.ReadString(32'767);
-
-		ASSERT_TRUE(feature_count.has_value());
-		ASSERT_TRUE(first_feature.has_value());
-		ASSERT_TRUE(second_feature.has_value());
-		EXPECT_EQ(*feature_count, 2);
-		EXPECT_EQ(*first_feature, "minecraft:vanilla");
-		EXPECT_EQ(*second_feature, "aurore_test:feature");
-		EXPECT_TRUE(feature_reader.Empty());
-
-		ByteReader pack_reader(initial[1].Payload);
-		const auto pack_count = pack_reader.ReadVarInt();
-		ASSERT_TRUE(pack_count.has_value());
-		EXPECT_EQ(*pack_count, 2);
-
-		for (const auto& expected : policy.KnownPacks) {
-			const auto namespace_name = pack_reader.ReadString(64);
-			const auto id = pack_reader.ReadString(256);
-			const auto version = pack_reader.ReadString(64);
-
-			ASSERT_TRUE(namespace_name.has_value());
-			ASSERT_TRUE(id.has_value());
-			ASSERT_TRUE(version.has_value());
-			EXPECT_EQ(*namespace_name, expected.Namespace);
-			EXPECT_EQ(*id, expected.Id);
-			EXPECT_EQ(*version, expected.Version);
-		}
-
-		EXPECT_TRUE(pack_reader.Empty());
+		auto frames = plan->MaterializePostNegotiationFrames({});
+		ASSERT_TRUE(frames.has_value());
+		ASSERT_EQ(frames->size(), 3u);
+		EXPECT_EQ((*frames)[0].PacketId, Configuration::Clientbound::RegistryDataPacketId);
+		EXPECT_EQ((*frames)[1].PacketId, Configuration::Clientbound::TagsPacketId);
+		EXPECT_EQ((*frames)[2].PacketId, Configuration::Clientbound::FinishConfigurationPacketId);
 	}
 
-	TEST(ConfigurationSequenceTests, MapsDimensionTypeRegistryData) {
-		auto snapshot = BuildSyntheticSnapshot(1);
+	TEST(ConfigurationSequenceTests, SelectedKnownPackAllowsOmittedEntryPayload) {
+		const Configuration::KnownPack pack{ .Namespace = "minecraft", .Id = "core", .Version = "1.21.11" };
+		auto rule = GenericRule("aurore_test:pack_registry");
+		rule.DataProvidedByKnownPack = pack;
 
-		const auto result = ConfigurationSequenceBuilder::Build(
-			snapshot,
-			MakePolicy());
-
-		ASSERT_TRUE(result.has_value());
-		const auto decoded = DecodeSingleRegistryPacket(
-			result->GetPostNegotiationFrames()[0]);
-
-		EXPECT_EQ(decoded.RegistryKey, "minecraft:dimension_type");
-		EXPECT_EQ(decoded.EntryKey, "aurore_test:dimension_type");
-		EXPECT_EQ(
-			decoded.Value,
-			snapshot->GetDimensionTypes().GetEntries()[0].Value.Data);
-	}
-
-	TEST(ConfigurationSequenceTests, MapsBiomeRegistryData) {
-		auto snapshot = BuildSyntheticSnapshot(1);
-
-		const auto result = ConfigurationSequenceBuilder::Build(
-			snapshot,
-			MakePolicy());
-
-		ASSERT_TRUE(result.has_value());
-		const auto decoded = DecodeSingleRegistryPacket(
-			result->GetPostNegotiationFrames()[1]);
-
-		EXPECT_EQ(decoded.RegistryKey, "minecraft:worldgen/biome");
-		EXPECT_EQ(decoded.EntryKey, "aurore_test:biome");
-		EXPECT_EQ(
-			decoded.Value,
-			snapshot->GetBiomes().GetEntries()[0].Value.Data);
-	}
-
-	TEST(ConfigurationSequenceTests, MapsAllTagFamiliesInDeterministicOrder) {
-		auto snapshot = BuildSyntheticSnapshot(1);
-
-		const auto result = ConfigurationSequenceBuilder::Build(
-			snapshot,
-			MakePolicy());
-
-		ASSERT_TRUE(result.has_value());
-		const auto& frame = result->GetPostNegotiationFrames()[2];
-
-		ByteReader reader(frame.Payload);
-		const auto registry_count = reader.ReadVarInt();
-		ASSERT_TRUE(registry_count.has_value());
-		ASSERT_EQ(*registry_count, 4);
-
-		const std::array expected_registry_keys{
-			std::string_view{ "minecraft:block" },
-			std::string_view{ "minecraft:item" },
-			std::string_view{ "minecraft:worldgen/biome" },
-			std::string_view{ "minecraft:dimension_type" },
+		ConfigurationSequencePolicy policy{
+			.EnabledFeatures = { Location("minecraft:vanilla") },
+			.KnownPacks = { pack },
+			.RegistryManifest = SingleRegistryManifest(std::move(rule)),
 		};
-
-		const std::array expected_tag_keys{
-			std::string_view{ "aurore_test:blocks" },
-			std::string_view{ "aurore_test:items" },
-			std::string_view{ "aurore_test:biomes" },
-			std::string_view{ "aurore_test:dimension_types" },
-		};
-
-		const std::array expected_member_counts{
-			2,
-			2,
-			1,
-			1,
-		};
-
-		for (std::size_t registry_index{ 0 };
-			registry_index < expected_registry_keys.size();
-			++registry_index) {
-
-			const auto registry_key = reader.ReadString(32'767);
-			const auto tag_count = reader.ReadVarInt();
-			const auto tag_key = reader.ReadString(32'767);
-			const auto member_count = reader.ReadVarInt();
-
-			ASSERT_TRUE(registry_key.has_value());
-			ASSERT_TRUE(tag_count.has_value());
-			ASSERT_TRUE(tag_key.has_value());
-			ASSERT_TRUE(member_count.has_value());
-
-			EXPECT_EQ(*registry_key, expected_registry_keys[registry_index]);
-			EXPECT_EQ(*tag_count, 1);
-			EXPECT_EQ(*tag_key, expected_tag_keys[registry_index]);
-			EXPECT_EQ(
-				*member_count,
-				expected_member_counts[registry_index]);
-
-			for (std::int32_t member_index{ 0 };
-				member_index < *member_count;
-				++member_index) {
-
-				const auto runtime_id = reader.ReadVarInt();
-				ASSERT_TRUE(runtime_id.has_value());
-				EXPECT_EQ(*runtime_id, member_index);
-			}
-		}
-
-		EXPECT_TRUE(reader.Empty());
-	}
-
-	TEST(ConfigurationSequenceTests, BuildsDeterministicFramesAcrossEquivalentSnapshots) {
-		auto first_snapshot = BuildSyntheticSnapshot(1);
-		auto second_snapshot = BuildSyntheticSnapshot(1);
-
-		const auto first = ConfigurationSequenceBuilder::Build(
-			first_snapshot,
-			MakePolicy());
-
-		const auto second = ConfigurationSequenceBuilder::Build(
-			second_snapshot,
-			MakePolicy());
-
-		ASSERT_TRUE(first.has_value());
-		ASSERT_TRUE(second.has_value());
-
-		ExpectFramesEqual(
-			first->GetInitialFrames(),
-			second->GetInitialFrames());
-
-		ExpectFramesEqual(
-			first->GetPostNegotiationFrames(),
-			second->GetPostNegotiationFrames());
-	}
-
-	TEST(ConfigurationSequenceTests, RetainsGenerationAfterNewerPublication) {
-		RegistrySnapshotStore store;
-		auto generation_one = BuildSyntheticSnapshot(1);
-		auto generation_two = BuildSyntheticSnapshot(2);
-
-		ASSERT_TRUE(store.Publish(generation_one).has_value());
 
 		auto plan = ConfigurationSequenceBuilder::Build(
-			generation_one,
-			MakePolicy());
-
+			GenericSnapshot(Location("aurore_test:pack_registry"), std::nullopt), policy);
 		ASSERT_TRUE(plan.has_value());
-		ASSERT_TRUE(store.Publish(generation_two).has_value());
+		ASSERT_EQ(plan->ReleaseInitialFrames().size(), 2u);
 
-		generation_one.reset();
-
-		EXPECT_EQ(store.GetActiveGeneration(), 2u);
-		EXPECT_EQ(plan->GetGeneration(), 1u);
-		EXPECT_NE(plan->GetSnapshot(), nullptr);
-		EXPECT_EQ(plan->GetSnapshot()->GetGeneration(), 1u);
+		const std::array selected{ pack };
+		const auto frames = plan->MaterializePostNegotiationFrames(selected);
+		EXPECT_TRUE(frames.has_value());
 	}
 
-	TEST(ConfigurationSequenceTests, PreservesFeatureEncodingFailureContext) {
-		auto snapshot = BuildSyntheticSnapshot(1);
-		auto limits = Configuration::DefaultLimits;
-		limits.MaximumFeatureFlags = 0;
+	TEST(ConfigurationSequenceTests, MissingRequiredPayloadFailsWithoutKnownPack) {
+		const Configuration::KnownPack pack{ .Namespace = "minecraft", .Id = "core", .Version = "1.21.11" };
+		auto rule = GenericRule("aurore_test:pack_registry");
+		rule.DataProvidedByKnownPack = pack;
 
-		const auto result = ConfigurationSequenceBuilder::Build(
-			snapshot,
-			MakePolicy(),
-			limits);
+		ConfigurationSequencePolicy policy{
+			.EnabledFeatures = { Location("minecraft:vanilla") },
+			.KnownPacks = { pack },
+			.RegistryManifest = SingleRegistryManifest(std::move(rule)),
+		};
 
-		ASSERT_FALSE(result.has_value());
-		EXPECT_EQ(
-			result.error().Code,
-			ConfigurationSequenceErrorCode::PacketEncodingFailed);
-		EXPECT_EQ(
-			result.error().Stage,
-			ConfigurationSequenceStage::FeatureFlags);
+		auto plan = ConfigurationSequenceBuilder::Build(
+			GenericSnapshot(Location("aurore_test:pack_registry"), std::nullopt), policy);
+		ASSERT_TRUE(plan.has_value());
+		ASSERT_EQ(plan->ReleaseInitialFrames().size(), 2u);
 
-		ASSERT_TRUE(std::holds_alternative<
-			Configuration::EncodeError>(result.error().Cause));
-
-		const auto& cause = std::get<Configuration::EncodeError>(
-			result.error().Cause);
-
-		EXPECT_EQ(
-			cause.Code,
-			Configuration::EncodeErrorCode::FeatureFlagLimitExceeded);
-	}
-
-	TEST(ConfigurationSequenceTests, PreservesRegistryNbtEncodingFailureContext) {
-		auto snapshot = BuildSyntheticSnapshot(1);
-		auto limits = Configuration::DefaultLimits;
-		limits.RegistryEntryNbt.MaximumTotalBytes = 1;
-
-		const auto result = ConfigurationSequenceBuilder::Build(
-			snapshot,
-			MakePolicy(),
-			limits);
-
-		ASSERT_FALSE(result.has_value());
-		EXPECT_EQ(
-			result.error().Code,
-			ConfigurationSequenceErrorCode::PacketEncodingFailed);
-		EXPECT_EQ(
-			result.error().Stage,
-			ConfigurationSequenceStage::DimensionTypeRegistry);
-		EXPECT_EQ(
-			result.error().Registry,
-			RegistryKind::DimensionType);
-
-		ASSERT_TRUE(std::holds_alternative<
-			Configuration::EncodeError>(result.error().Cause));
-
-		const auto& cause = std::get<Configuration::EncodeError>(
-			result.error().Cause);
-
-		EXPECT_EQ(
-			cause.Code,
-			Configuration::EncodeErrorCode::RegistryEntryNbtEncodingFailed);
-		EXPECT_TRUE(cause.NbtError.has_value());
-		EXPECT_EQ(
-			cause.EntryKey,
-			ParseRequired("aurore_test:dimension_type"));
+		const auto frames = plan->MaterializePostNegotiationFrames({});
+		ASSERT_FALSE(frames.has_value());
+		EXPECT_EQ(frames.error().Code, ConfigurationSequenceErrorCode::RegistryValidationFailed);
 	}
 }
-

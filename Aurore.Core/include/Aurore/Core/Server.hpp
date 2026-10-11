@@ -2,8 +2,8 @@
 
 #include <Aurore/Core/ClientService.hpp>
 #include <Aurore/Core/Configuration.hpp>
-#include <Aurore/Core/Tick.hpp>
 #include <Aurore/Core/RegistrySnapshotStore.hpp>
+#include <Aurore/Core/Tick.hpp>
 
 #include <Aurore/Network/NetworkManager.hpp>
 
@@ -13,32 +13,35 @@
 
 #include <atomic>
 #include <cstddef>
+#include <memory>
 
 namespace Aurore::Core::Detail {
 	class ServerTestAccess;
 }
 
 namespace Aurore::Core {
+	struct ServerBootstrap final {
+		std::shared_ptr<const Aurore::Util::RegistrySnapshot> InitialRegistrySnapshot;
+	};
+
 	class Server final {
 	public:
 		Server() noexcept;
+		explicit Server(ServerBootstrap bootstrap) noexcept;
 		~Server() noexcept;
 
 		Server(const Server&) = delete;
 		Server& operator=(const Server&) = delete;
-
 		Server(Server&&) = delete;
 		Server& operator=(Server&&) = delete;
 
 		[[nodiscard]] int Run();
-
 		void RequestStop() noexcept;
 
 	private:
 		friend class Detail::ServerTestAccess;
 
 		[[nodiscard]] bool Initialize();
-
 		[[nodiscard]] bool LoadConfiguration();
 		[[nodiscard]] bool InitializeDataFoundations();
 		[[nodiscard]] bool InitializeProtocolConfiguration();
@@ -50,7 +53,6 @@ namespace Aurore::Core {
 		[[nodiscard]] Protocol::ServerStatus BuildServerStatus(const ClientConfiguration& client_configuration) const;
 
 		void RunLoop();
-
 		void RunTick(const TickSchedule::Context& context);
 		void RunTickFunctions(const TickSchedule::Context& context);
 		void SendTimeUpdates(const TickSchedule::Context& context);
@@ -59,9 +61,9 @@ namespace Aurore::Core {
 		void SendPlayerInformation(const TickSchedule::Context& context);
 		void RunAutosave(const TickSchedule::Context& context);
 		void RunPendingTasks(const TickSchedule::Context& context);
-
 		void Shutdown() noexcept;
 
+		ServerBootstrap m_Bootstrap;
 		Configuration m_Config;
 		TickSchedule m_TickSchedule;
 		RegistrySnapshotStore m_RegistrySnapshots;
@@ -73,7 +75,6 @@ namespace Aurore::Core {
 		ClientService m_ClientService;
 
 		std::atomic_bool m_Running{ false };
-
 		bool m_LoggingInitialized{ false };
 		bool m_StopHandlerInstalled{ false };
 		bool m_Initialized{ false };

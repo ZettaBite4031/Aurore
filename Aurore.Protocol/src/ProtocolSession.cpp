@@ -283,13 +283,15 @@ namespace Aurore::Protocol {
 		if (!selection)
 			return std::unexpected(ProtocolError::InvalidKnownPackSelection);
 
-		auto frames = m_ConfigurationPlan->ReleasePostNegotiationFrames();
-		if (frames.empty())
+		auto frames = m_ConfigurationPlan->MaterializePostNegotiationFrames(packet.Packs);
+		if (!frames)
+			return std::unexpected(ProtocolError::ConfigurationMaterializationFailed);
+		if (frames->empty())
 			return std::unexpected(ProtocolError::MissingConfigurationPlan);
 
 		ProtocolAction action;
-		action.OutboundPackets.reserve(frames.size());
-		for (auto& frame : frames) {
+		action.OutboundPackets.reserve(frames->size());
+		for (auto& frame : *frames) {
 			action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(frame) });
 		}
 
@@ -380,23 +382,10 @@ namespace Aurore::Protocol {
 		if (!resolution.Plan.GetSnapshot() || resolution.Plan.GetGeneration() == Aurore::Util::NoRegistryGeneration)
 			return std::unexpected(ProtocolError::ConfigurationGenerationMismatch);
 
-		const auto initial_frames = resolution.Plan.GetInitialFrames();
-		const auto post_negotiation_frames = resolution.Plan.GetPostNegotiationFrames();
-
-		if (initial_frames.size() < 2 || post_negotiation_frames.size() < 2
-			|| initial_frames.front().PacketId != Configuration::Clientbound::FeatureFlagsPacketId
-			|| initial_frames.back().PacketId != Configuration::Clientbound::SelectKnownPacksPacketId
-			|| post_negotiation_frames[post_negotiation_frames.size() - 2].PacketId != Configuration::Clientbound::TagsPacketId
-			|| post_negotiation_frames.back().PacketId != Configuration::Clientbound::FinishConfigurationPacketId)
-			return std::unexpected(ProtocolError::MissingConfigurationPlan);
-
-		for (std::size_t index{ 0 }; index + 2 < post_negotiation_frames.size(); index++) {
-			if (post_negotiation_frames[index].PacketId == Configuration::Clientbound::RegistryDataPacketId) continue;
-			return std::unexpected(ProtocolError::MissingConfigurationPlan);
-		}
-
 		auto frames = resolution.Plan.ReleaseInitialFrames();
-		if (frames.empty())
+		if (frames.size() != 2
+			|| frames[0].PacketId != Configuration::Clientbound::FeatureFlagsPacketId
+			|| frames[1].PacketId != Configuration::Clientbound::SelectKnownPacksPacketId)
 			return std::unexpected(ProtocolError::MissingConfigurationPlan);
 
 		ProtocolAction action;

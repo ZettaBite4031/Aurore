@@ -10,6 +10,7 @@ target_link_libraries(
     PRIVATE
     Aurore::BuildOptions
     Aurore::Core
+    Aurore::Data
 )
 
 set_target_properties(

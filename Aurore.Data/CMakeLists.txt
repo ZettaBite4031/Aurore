@@ -5,6 +5,7 @@ set(
     src/DataPreparationService.cpp
     src/FileIdentity.cpp
     src/JavaRuntime.cpp
+    src/MinecraftDataCorpus.cpp
     src/MinecraftDataGenerator.cpp
     src/MinecraftSource.cpp
     src/MojangMetadata.cpp
@@ -13,6 +14,7 @@ set(
 
     include/Aurore/Data/DataPreparation.hpp
     include/Aurore/Data/DataPreparationService.hpp
+    include/Aurore/Data/MinecraftDataCorpus.hpp
     include/Aurore/Data/MinecraftSource.hpp
 
     src/FileIdentity.hpp
@@ -71,6 +73,9 @@ target_include_directories(
 
 target_link_libraries(
     aurore_data
+
+    PUBLIC
+    Aurore::Util
 
     PRIVATE
     Aurore::BuildOptions

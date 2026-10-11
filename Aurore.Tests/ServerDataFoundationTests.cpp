@@ -8,6 +8,8 @@
 namespace Aurore::Tests {
 	using Aurore::Core::InitialSyntheticRegistryGeneration;
 	using Aurore::Core::Server;
+	using Aurore::Core::ServerBootstrap;
+	using Aurore::Core::SyntheticRegistrySnapshotFactory;
 	using Aurore::Core::Detail::ServerTestAccess;
 
 	TEST(ServerDataFoundationTests, InitializesCanonicalSnapshotIdempotently) {
@@ -25,5 +27,17 @@ namespace Aurore::Tests {
 		ASSERT_TRUE(ServerTestAccess::InitializeDataFoundations(server));
 		EXPECT_EQ(store.GetActiveSnapshot().get(), first_snapshot.get());
 	}
-}
 
+	TEST(ServerDataFoundationTests, PublishesInjectedRegistrySnapshot) {
+		auto snapshot = SyntheticRegistrySnapshotFactory::Build(7);
+		ASSERT_TRUE(snapshot.has_value());
+
+		Server server{ ServerBootstrap{ .InitialRegistrySnapshot = *snapshot } };
+		ASSERT_TRUE(ServerTestAccess::InitializeDataFoundations(server));
+
+		const auto active = ServerTestAccess::GetRegistrySnapshotStore(server).GetActiveSnapshot();
+		ASSERT_NE(active, nullptr);
+		EXPECT_EQ(active.get(), snapshot->get());
+		EXPECT_EQ(active->GetGeneration(), 7u);
+	}
+}

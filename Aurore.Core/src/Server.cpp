@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -98,8 +99,10 @@ namespace {
 }
 
 namespace Aurore::Core {
-	Server::Server() noexcept
-		: m_ClientService(m_NetworkManager, m_RegistrySnapshots) {}
+	Server::Server() noexcept : Server(ServerBootstrap{}) {}
+
+	Server::Server(ServerBootstrap bootstrap) noexcept
+		: m_Bootstrap(std::move(bootstrap)), m_ClientService(m_NetworkManager, m_RegistrySnapshots) {}
 
 	Server::~Server() noexcept {
 		Shutdown();
@@ -223,6 +226,12 @@ namespace Aurore::Core {
 
 	bool Server::InitializeDataFoundations() {
 		if (m_RegistrySnapshots.GetActiveSnapshot() != nullptr) return true;
+
+		if (m_Bootstrap.InitialRegistrySnapshot) {
+			const auto publication = m_RegistrySnapshots.Publish(m_Bootstrap.InitialRegistrySnapshot);
+			return publication.has_value();
+		}
+
 		auto snapshot = SyntheticRegistrySnapshotFactory::Build(InitialSyntheticRegistryGeneration);
 		if (!snapshot) return false;
 
@@ -241,11 +250,19 @@ namespace Aurore::Core {
 			return false;
 		}
 
+		auto manifest = Protocol::Protocol774RegistryManifest::Build();
+		if (!manifest) {
+			AU_ERROR(LogCategory::Protocol, "Failed to build protocol-774 registry compatibility manifest. Error: {}",
+				static_cast<unsigned int>(manifest.error().Code));
+			return false;
+		}
+
 		Protocol::ConfigurationSequencePolicy policy;
 		policy.EnabledFeatures.emplace_back(std::move(*vanilla_feature));
 
 		/* The synthetic Configuration sequence currently offers no known packs. */
 		policy.KnownPacks.clear();
+		policy.RegistryManifest = std::make_shared<const Protocol::RegistryCompatibilityManifest>(std::move(*manifest));
 
 		m_ConfigurationPolicy = std::move(policy);
 		m_ConfigurationLimits = Protocol::Packets::Configuration::DefaultLimits;

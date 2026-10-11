@@ -29,6 +29,7 @@ namespace Aurore::Protocol {
 		InvalidRequestResolution,
 		InvalidKnownPackSelection,
 		MissingConfigurationPlan,
+		ConfigurationMaterializationFailed,
 		ConfigurationGenerationMismatch,
 	};
 

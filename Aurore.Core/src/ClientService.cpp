@@ -391,8 +391,6 @@ namespace Aurore::Core {
 				request.Id.Value, connection.Value, static_cast<unsigned int>(error.Code),
 				static_cast<unsigned int>(error.Stage), error.Generation);
 
-			if (error.Registry)
-				AU_ERROR(LogCategory::Protocol, "Configuration failure registry: {}", static_cast<unsigned int>(*error.Registry));
 			if (error.Key)
 				AU_ERROR(LogCategory::Protocol, "Configuration failure key: {}", error.Key->ToString());
 			return close_failed_configuration();

@@ -8,6 +8,7 @@
 #include <Aurore/Protocol/Packets/Login.hpp>
 #include <Aurore/Protocol/ProtocolConnection.hpp>
 #include <Aurore/Protocol/ProtocolSession.hpp>
+#include <Aurore/Protocol/RegistryCompatibility.hpp>
 
 #include <Aurore/Util/ByteBuffer.hpp>
 #include <Aurore/Util/ResourceLocation.hpp>
@@ -64,6 +65,7 @@ namespace Aurore::Tests {
 		using Aurore::Protocol::ProtocolRequest;
 		using Aurore::Protocol::ProtocolRequestId;
 		using Aurore::Protocol::ProtocolState;
+		using Aurore::Protocol::RegistryCompatibilityManifest;
 
 		using Aurore::Util::ByteBuffer;
 		using Aurore::Util::RegistryGeneration;
@@ -99,13 +101,17 @@ namespace Aurore::Tests {
 			return std::move(*result);
 		}
 
-		[[nodiscard]] ConfigurationSequencePolicy
-		MakePolicy() {
+		[[nodiscard]] std::shared_ptr<const RegistryCompatibilityManifest> BuiltInManifest() {
+			auto manifest = Aurore::Protocol::Protocol774RegistryManifest::Build();
+			if (!manifest) throw std::runtime_error("Failed to build protocol-774 manifest fixture.");
+			return std::make_shared<const RegistryCompatibilityManifest>(std::move(*manifest));
+		}
+
+		[[nodiscard]] ConfigurationSequencePolicy MakePolicy() {
 			return ConfigurationSequencePolicy{
-				.EnabledFeatures = {
-					ParseRequired("minecraft:vanilla"),
-				},
+				.EnabledFeatures = { ParseRequired("minecraft:vanilla") },
 				.KnownPacks = {},
+				.RegistryManifest = BuiltInManifest(),
 			};
 		}
 

@@ -2,6 +2,7 @@ add_library(
     aurore_protocol
     STATIC
 
+    src/ConfigurationRegistryAdapter.cpp
     src/ConfigurationSequence.cpp
     src/PacketCodec.cpp
     src/PacketFrame.cpp
@@ -16,6 +17,7 @@ add_library(
     src/Packets/Login.cpp
     src/Packets/Status.cpp
 
+    include/Aurore/Protocol/ConfigurationRegistryAdapter.hpp
     include/Aurore/Protocol/ConfigurationSequence.hpp
     include/Aurore/Protocol/PacketCodec.hpp
     include/Aurore/Protocol/PacketFrame.hpp

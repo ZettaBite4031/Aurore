@@ -65,6 +65,7 @@ namespace Aurore::Protocol {
 		case ProtocolError::InvalidRequestResolution: return "InvalidRequestResolution";
 		case ProtocolError::InvalidKnownPackSelection: return "InvalidKnownPackSelection";
 		case ProtocolError::MissingConfigurationPlan: return "MissingConfigurationPlan";
+		case ProtocolError::ConfigurationMaterializationFailed: return "ConfigurationMaterializationFailed";
 		case ProtocolError::ConfigurationGenerationMismatch: return "ConfigurationGenerationMismatch";
 		}
 		return "UnknownProtocolError";

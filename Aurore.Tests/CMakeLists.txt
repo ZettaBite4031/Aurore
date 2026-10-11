@@ -13,6 +13,7 @@ set(
     DataPreparationTests.cpp
     JavaRuntimeTests.cpp
     LoginRequestTests.cpp
+    MinecraftDataCorpusTests.cpp
     MinecraftDataGeneratorTests.cpp
     MinecraftSourceTests.cpp
     MojangMetadataTests.cpp
