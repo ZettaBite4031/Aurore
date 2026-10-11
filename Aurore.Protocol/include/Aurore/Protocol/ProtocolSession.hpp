@@ -9,6 +9,7 @@
 #include <Aurore/Protocol/Packets/Status.hpp>
 #include <Aurore/Protocol/Packets/Login.hpp>
 #include <Aurore/Protocol/Packets/Configuration.hpp>
+#include <Aurore/Protocol/Packets/Play.hpp>
 
 #include <Aurore/Util/ByteBuffer.hpp>
 
@@ -124,27 +125,28 @@ namespace Aurore::Protocol {
 		[[nodiscard]] ProtocolHandleResult HandleStatusFrame(const PacketFrame& frame);
 		[[nodiscard]] ProtocolHandleResult HandleLoginFrame(const PacketFrame& frame);
 		[[nodiscard]] ProtocolHandleResult HandleConfigurationFrame(const PacketFrame& frame);
+		[[nodiscard]] ProtocolHandleResult HandlePlayFrame(const PacketFrame& frame);
 
-		[[nodiscard]] ProtocolHandleResult HandleHandshakePacket(
-			const Packets::Handshake::Serverbound::Handshake& packet);
-
-		[[nodiscard]] ProtocolHandleResult HandleStatusPacket(
-			const Packets::Status::Serverbound::Request& packet);
-
-		[[nodiscard]] ProtocolHandleResult HandleStatusPacket(
-			const Packets::Status::Serverbound::Ping& packet);
-
-		[[nodiscard]] ProtocolHandleResult HandleLoginPacket(
-			const Packets::Login::Serverbound::Start& packet);
-
-		[[nodiscard]] ProtocolHandleResult HandleLoginPacket(
-			const Packets::Login::Serverbound::Acknowledged& packet);
+		[[nodiscard]] ProtocolHandleResult HandleHandshakePacket(const Packets::Handshake::Serverbound::Handshake& packet);
+		[[nodiscard]] ProtocolHandleResult HandleStatusPacket(const Packets::Status::Serverbound::Request& packet);
+		[[nodiscard]] ProtocolHandleResult HandleStatusPacket(const Packets::Status::Serverbound::Ping& packet);
+		[[nodiscard]] ProtocolHandleResult HandleLoginPacket(const Packets::Login::Serverbound::Start& packet);
+		[[nodiscard]] ProtocolHandleResult HandleLoginPacket(const Packets::Login::Serverbound::Acknowledged& packet);
 
 		[[nodiscard]] ProtocolHandleResult HandleConfigurationPacket(const Packets::Configuration::Serverbound::ClientInformation& packet);
 		[[nodiscard]] ProtocolHandleResult HandleConfigurationPacket(const Packets::Configuration::Serverbound::ClientBrand& packet);
 		[[nodiscard]] ProtocolHandleResult HandleConfigurationPacket(const Packets::Configuration::Serverbound::CustomPayload& packet);
 		[[nodiscard]] ProtocolHandleResult HandleConfigurationPacket(const Packets::Configuration::Serverbound::SelectKnownPacks& packet);
 		[[nodiscard]] ProtocolHandleResult HandleConfigurationPacket(const Packets::Configuration::Serverbound::FinishConfiguration& packet);
+
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::AcceptTeleportation& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::ClientTickEnd& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::KeepAlive& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::MovePlayerPosition& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::MovePlayerPositionRotation& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::MovePlayerRotation& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::MovePlayerStatusOnly& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::PlayerLoaded& packet);
 
 		[[nodiscard]] ProtocolHandleResult ResolveLogin(const LoginAcceptedResolution& resolution);
 		[[nodiscard]] ProtocolHandleResult ResolveLogin(const LoginRejectedResolution& resolution);

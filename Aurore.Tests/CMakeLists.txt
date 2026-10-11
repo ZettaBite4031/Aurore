@@ -27,6 +27,7 @@ set(
     OfflineLoginStabilizationTests.cpp
     PacketCodecTests.cpp
     PacketFrameTests.cpp
+    PlayProtocolTests.cpp
     ProcessTests.cpp
     ProtocolConnectionTests.cpp
     ProtocolPipelineTests.cpp

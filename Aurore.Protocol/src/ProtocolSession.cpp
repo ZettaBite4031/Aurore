@@ -8,6 +8,7 @@
 
 namespace Aurore::Protocol {
 	namespace Configuration = Packets::Configuration;
+	namespace Play = Packets::Play;
 
 	ProtocolSession::ProtocolSession(ServerStatus server_status)
 		: m_ServerStatus(std::move(server_status)) {}
@@ -18,9 +19,7 @@ namespace Aurore::Protocol {
 		case ProtocolState::Status: return HandleStatusFrame(frame);
 		case ProtocolState::Login: return HandleLoginFrame(frame);
 		case ProtocolState::Configuration: return HandleConfigurationFrame(frame);
-
-		case ProtocolState::Play:
-			return std::unexpected(ProtocolError::UnsupportedState);
+		case ProtocolState::Play: return HandlePlayFrame(frame);
 
 		case ProtocolState::Disconnected:
 			return std::unexpected(ProtocolError::UnexpectedPacket);
@@ -112,9 +111,13 @@ namespace Aurore::Protocol {
 		return std::visit([this](const auto& value) { return HandleConfigurationPacket(value); }, *packet);
 	}
 
-	ProtocolHandleResult ProtocolSession::HandleHandshakePacket(
-		const Packets::Handshake::Serverbound::Handshake& packet) {
+	ProtocolHandleResult ProtocolSession::HandlePlayFrame(const PacketFrame& frame) {
+		auto packet = Play::Serverbound::Decode(frame);
+		if (!packet) return std::unexpected(packet.error());
+		return std::visit([this](const auto& value) { return HandlePlayPacket(value); }, *packet);
+	}
 
+	ProtocolHandleResult ProtocolSession::HandleHandshakePacket(const Packets::Handshake::Serverbound::Handshake& packet) {
 		ProtocolAction action;
 
 		switch (packet.Intention) {
@@ -151,8 +154,7 @@ namespace Aurore::Protocol {
 		return std::unexpected(ProtocolError::InvalidNextState);
 	}
 
-	ProtocolHandleResult ProtocolSession::HandleStatusPacket(
-		const Packets::Status::Serverbound::Request& packet) {
+	ProtocolHandleResult ProtocolSession::HandleStatusPacket(const Packets::Status::Serverbound::Request& packet) {
 		(void)packet;
 
 		if (m_StatusPhase != StatusPhase::AwaitingRequest)
@@ -169,8 +171,7 @@ namespace Aurore::Protocol {
 		return action;
 	}
 
-	ProtocolHandleResult ProtocolSession::HandleStatusPacket(
-		const Packets::Status::Serverbound::Ping& packet) {
+	ProtocolHandleResult ProtocolSession::HandleStatusPacket(const Packets::Status::Serverbound::Ping& packet) {
 		if (m_StatusPhase != StatusPhase::AwaitingPing)
 			return std::unexpected(ProtocolError::UnexpectedPacket);
 
@@ -187,8 +188,7 @@ namespace Aurore::Protocol {
 		return action;
 	}
 
-	ProtocolHandleResult ProtocolSession::HandleLoginPacket(
-		const Packets::Login::Serverbound::Start& packet) {
+	ProtocolHandleResult ProtocolSession::HandleLoginPacket(const Packets::Login::Serverbound::Start& packet) {
 		if (m_LoginPhase != LoginPhase::AwaitingStart)
 			return std::unexpected(ProtocolError::UnexpectedPacket);
 
@@ -211,8 +211,7 @@ namespace Aurore::Protocol {
 		return action;
 	}
 
-	ProtocolHandleResult ProtocolSession::HandleLoginPacket(
-		const Packets::Login::Serverbound::Acknowledged& packet) {
+	ProtocolHandleResult ProtocolSession::HandleLoginPacket(const Packets::Login::Serverbound::Acknowledged& packet) {
 		(void)packet;
 		if (m_LoginPhase != LoginPhase::AwaitingAcknowledgement)
 			return std::unexpected(ProtocolError::UnexpectedPacket);
@@ -326,6 +325,46 @@ namespace Aurore::Protocol {
 		m_PendingRequestId = request_id;
 		m_ConfigurationPhase = ConfigurationPhase::AwaitingPlayAdmission;
 		return action;
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::AcceptTeleportation& packet) {
+		(void)packet;
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::ClientTickEnd& packet) {
+		(void)packet;
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::KeepAlive& packet) {
+		(void)packet;
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::MovePlayerPosition& packet) {
+		(void)packet;
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::MovePlayerPositionRotation& packet) {
+		(void)packet;
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::MovePlayerRotation& packet) {
+		(void)packet;
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::MovePlayerStatusOnly& packet) {
+		(void)packet;
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::PlayerLoaded& packet) {
+		(void)packet;
+		return ProtocolAction{};
 	}
 
 	ProtocolHandleResult ProtocolSession::ResolveLogin(const LoginAcceptedResolution& resolution) {

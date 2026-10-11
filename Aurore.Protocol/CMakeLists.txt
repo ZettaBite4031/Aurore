@@ -16,6 +16,7 @@ add_library(
     src/Packets/Handshake.cpp
     src/Packets/Login.cpp
     src/Packets/Status.cpp
+    src/Packets/Play.cpp
 
     include/Aurore/Protocol/ConfigurationRegistryAdapter.hpp
     include/Aurore/Protocol/ConfigurationSequence.hpp
@@ -31,7 +32,8 @@ add_library(
     include/Aurore/Protocol/Packets/Configuration.hpp
     include/Aurore/Protocol/Packets/Handshake.hpp
     include/Aurore/Protocol/Packets/Login.hpp
-    include/Aurore/Protocol/Packets/Status.hpp
+ "src/Packets/Play.cpp"    include/Aurore/Protocol/Packets/Status.hpp
+    include/Aurore/Protocol/Packets/Play.hpp
 )
 
 add_library(Aurore::Protocol ALIAS aurore_protocol)
