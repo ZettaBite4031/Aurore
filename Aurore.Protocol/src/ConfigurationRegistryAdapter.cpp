@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <utility>
 
 namespace {
 	namespace Configuration = Aurore::Protocol::Packets::Configuration;
@@ -41,7 +42,7 @@ namespace {
 		TypedRegistryDescriptor{ TypedRegistrySource::DimensionType, "minecraft", "dimension_type" },
 	};
 
-	[[nodiscard]] std::optional<TypedRegistrySource> FindTypedRegistrySource(const ResourceLocation& key) noexcept {
+	[[nodiscard]] std::optional<TypedRegistrySource> FindTypedRegistrySource( const ResourceLocation& key) noexcept {
 		for (const auto& descriptor : TypedRegistryDescriptors)
 			if (key.GetNamespace() == descriptor.Namespace && key.GetPath() == descriptor.Path)
 				return descriptor.Source;
@@ -53,69 +54,83 @@ namespace {
 	}
 
 	template<typename T>
-	[[nodiscard]] Configuration::Clientbound::RegistryData BuildRegistryData(
-		const ResourceLocation& key, const Registry<T>& registry, bool omit_payloads) {
-
+	[[nodiscard]] Configuration::Clientbound::RegistryData BuildRegistryData(const ResourceLocation& key, const Registry<T>& registry, bool omit_payloads) {
 		Configuration::Clientbound::RegistryData result{ .RegistryKey = key };
 		result.Entries.reserve(registry.Size());
 
 		for (const auto& entry : registry.GetEntries())
 			result.Entries.push_back({
 				.Key = entry.Key,
-				.Value = omit_payloads ? std::optional<Aurore::Util::NbtCompound>{} : std::optional{ entry.Value.Data },
+				.Value = omit_payloads
+					? std::optional<Aurore::Util::NbtCompound>{}
+					: std::optional{ entry.Value.Data },
 			});
 
 		return result;
 	}
 
-	[[nodiscard]] Configuration::Clientbound::RegistryData BuildRegistryData(
-		const ResourceLocation& key, const Aurore::Util::NetworkRegistry& registry, bool omit_payloads) {
-
+	[[nodiscard]] Configuration::Clientbound::RegistryData BuildRegistryData(const ResourceLocation& key, const Aurore::Util::NetworkRegistry& registry, bool omit_payloads) {
 		Configuration::Clientbound::RegistryData result{ .RegistryKey = key };
 		result.Entries.reserve(registry.Size());
 
 		for (const auto& entry : registry.GetEntries())
 			result.Entries.push_back({
 				.Key = entry.Key,
-				.Value = omit_payloads ? Aurore::Util::NetworkRegistryValue{} : entry.Value,
+				.Value = omit_payloads
+					? Aurore::Util::NetworkRegistryValue{}
+					: entry.Value,
 			});
 
 		return result;
 	}
 
 	template<typename T>
-	[[nodiscard]] Configuration::Clientbound::RegistryTagData BuildTags(
-		const ResourceLocation& key, const RegistryTagSet<T>& tags) {
-
+	[[nodiscard]] Configuration::Clientbound::RegistryTagData BuildTags(const ResourceLocation& key, const RegistryTagSet<T>& tags) {
 		Configuration::Clientbound::RegistryTagData result{ .RegistryKey = key };
 		result.Tags.reserve(tags.Size());
 
 		for (const auto& tag : tags.GetTags())
-			result.Tags.push_back({ .Key = tag.Key, .Members = tag.Members });
+			result.Tags.push_back({
+				.Key = tag.Key,
+				.Members = tag.Members,
+			});
 
 		return result;
 	}
 
-	[[nodiscard]] Configuration::Clientbound::RegistryTagData BuildTags(
-		const ResourceLocation& key, const Aurore::Util::NetworkRegistryTagSection* tags) {
-
+	[[nodiscard]] Configuration::Clientbound::RegistryTagData BuildTags(const ResourceLocation& key, const Aurore::Util::NetworkRegistryTagSection* tags) {
 		Configuration::Clientbound::RegistryTagData result{ .RegistryKey = key };
 		if (!tags) return result;
 
 		result.Tags.reserve(tags->Size());
 		for (const auto& tag : tags->GetTags())
-			result.Tags.push_back({ .Key = tag.Key, .Members = tag.Members });
+			result.Tags.push_back({
+				.Key = tag.Key,
+				.Members = tag.Members,
+			});
 
 		return result;
 	}
 
-	[[nodiscard]] RegistrySnapshotInventoryError RepresentationError(
-		const RegistryCompatibilityRule& rule,
-		RegistryRepresentation expected,
-		std::optional<RegistryRepresentation> observed = std::nullopt) {
+	[[nodiscard]] Configuration::Clientbound::RegistryTagData BuildTags(const ResourceLocation& key, const Aurore::Util::StaticRegistryTagSection* tags) {
+		Configuration::Clientbound::RegistryTagData result{ .RegistryKey = key };
+		if (!tags) return result;
 
+		result.Tags.reserve(tags->Size());
+		for (const auto& tag : tags->GetTags())
+			result.Tags.push_back({
+				.Key = tag.Key,
+				.Members = tag.Members,
+			});
+
+		return result;
+	}
+
+	[[nodiscard]] RegistrySnapshotInventoryError RepresentationError(const RegistryCompatibilityRule& rule, RegistryRepresentation expected, std::optional<RegistryRepresentation> observed = std::nullopt) {
 		return RegistrySnapshotInventoryError{
-			.Code = observed ? RegistrySnapshotInventoryErrorCode::RepresentationMismatch : RegistrySnapshotInventoryErrorCode::UnsupportedTypedRegistry,
+			.Code = observed
+				? RegistrySnapshotInventoryErrorCode::RepresentationMismatch
+				: RegistrySnapshotInventoryErrorCode::UnsupportedTypedRegistry,
 			.Key = rule.Key,
 			.RuleIndex = 0,
 			.ExpectedRepresentation = expected,
@@ -125,20 +140,19 @@ namespace {
 }
 
 namespace Aurore::Protocol {
-	std::expected<ConfigurationRegistrySection, RegistrySnapshotInventoryError> ConfigurationRegistryAdapter::Build(
-		const RegistryCompatibilityRule& rule,
-		const RegistrySnapshot& snapshot,
-		std::span<const Configuration::KnownPack> selected_known_packs) {
-
+	std::expected<ConfigurationRegistrySection, RegistrySnapshotInventoryError> ConfigurationRegistryAdapter::Build(const RegistryCompatibilityRule& rule, const RegistrySnapshot& snapshot, std::span<const Configuration::KnownPack> selected_known_packs) {
 		const auto typed = FindTypedRegistrySource(rule.Key);
+		const auto* network = snapshot.GetNetworkRegistries().Find(rule.Key);
+		const auto* static_identity = snapshot.GetStaticRegistries().Find(rule.Key);
+
 		const bool omit_payloads = rule.DataProvidedByKnownPack && IsSelected(*rule.DataProvidedByKnownPack, selected_known_packs);
 		ConfigurationRegistrySection result;
-
-		if (rule.Representation == RegistryRepresentation::TypedDomain) {
+		switch (rule.Representation) {
+		case RegistryRepresentation::TypedDomain:
 			if (!typed) {
-				const auto observed = snapshot.GetNetworkRegistries().Contains(rule.Key)
-					? std::optional{ RegistryRepresentation::GenericNetwork }
-					: std::nullopt;
+				std::optional<RegistryRepresentation> observed;
+				if (network) observed = RegistryRepresentation::GenericNetwork;
+				else if (static_identity) observed = RegistryRepresentation::StaticIdentity;
 				return std::unexpected(RepresentationError(rule, RegistryRepresentation::TypedDomain, observed));
 			}
 
@@ -146,44 +160,75 @@ namespace Aurore::Protocol {
 			case TypedRegistrySource::Block:
 				if (rule.EntryData != RegistryEntryDataPolicy::Forbidden)
 					result.RegistryData = BuildRegistryData(rule.Key, snapshot.GetBlocks(), omit_payloads);
+
 				if (rule.Tags == RegistryTagPolicy::Required || (rule.Tags == RegistryTagPolicy::Optional && !snapshot.GetBlockTags().Empty()))
 					result.Tags = BuildTags(rule.Key, snapshot.GetBlockTags());
 				break;
+
 			case TypedRegistrySource::Item:
 				if (rule.EntryData != RegistryEntryDataPolicy::Forbidden)
 					result.RegistryData = BuildRegistryData(rule.Key, snapshot.GetItems(), omit_payloads);
+
 				if (rule.Tags == RegistryTagPolicy::Required || (rule.Tags == RegistryTagPolicy::Optional && !snapshot.GetItemTags().Empty()))
 					result.Tags = BuildTags(rule.Key, snapshot.GetItemTags());
 				break;
+
 			case TypedRegistrySource::Biome:
 				if (rule.EntryData != RegistryEntryDataPolicy::Forbidden)
 					result.RegistryData = BuildRegistryData(rule.Key, snapshot.GetBiomes(), omit_payloads);
+
 				if (rule.Tags == RegistryTagPolicy::Required || (rule.Tags == RegistryTagPolicy::Optional && !snapshot.GetBiomeTags().Empty()))
 					result.Tags = BuildTags(rule.Key, snapshot.GetBiomeTags());
 				break;
+
 			case TypedRegistrySource::DimensionType:
 				if (rule.EntryData != RegistryEntryDataPolicy::Forbidden)
 					result.RegistryData = BuildRegistryData(rule.Key, snapshot.GetDimensionTypes(), omit_payloads);
+
 				if (rule.Tags == RegistryTagPolicy::Required || (rule.Tags == RegistryTagPolicy::Optional && !snapshot.GetDimensionTypeTags().Empty()))
 					result.Tags = BuildTags(rule.Key, snapshot.GetDimensionTypeTags());
 				break;
 			}
 
 			return result;
+
+		case RegistryRepresentation::GenericNetwork:
+			if (typed)
+				return std::unexpected(RepresentationError(rule, RegistryRepresentation::GenericNetwork, RegistryRepresentation::TypedDomain));
+
+			if (static_identity)
+				return std::unexpected(RepresentationError(rule, RegistryRepresentation::GenericNetwork, RegistryRepresentation::StaticIdentity));
+
+			if (!network) return result;
+
+			if (rule.EntryData != RegistryEntryDataPolicy::Forbidden)
+				result.RegistryData = BuildRegistryData(rule.Key, *network, omit_payloads);
+
+			if (const auto* tags = snapshot.GetNetworkRegistryTags().Find(rule.Key); rule.Tags == RegistryTagPolicy::Required || (rule.Tags == RegistryTagPolicy::Optional && tags && !tags->Empty()))
+				result.Tags = BuildTags(rule.Key, tags);
+
+			return result;
+
+		case RegistryRepresentation::StaticIdentity:
+			if (typed)
+				return std::unexpected(RepresentationError(rule, RegistryRepresentation::StaticIdentity, RegistryRepresentation::TypedDomain));
+
+			if (network)
+				return std::unexpected(RepresentationError(rule, RegistryRepresentation::StaticIdentity, RegistryRepresentation::GenericNetwork));
+
+			if (!static_identity) return result;
+
+			/*
+				StaticIdentity registries never produce Registry Data.
+				Their retained entry order exists exclusively to resolve
+				Update Tags member IDs.
+			*/
+			if (const auto* tags = snapshot.GetStaticRegistryTags().Find(rule.Key); rule.Tags == RegistryTagPolicy::Required || (rule.Tags == RegistryTagPolicy::Optional && tags && !tags->Empty()))
+				result.Tags = BuildTags(rule.Key, tags);
+
+			return result;
 		}
 
-		if (typed)
-			return std::unexpected(RepresentationError(rule, RegistryRepresentation::GenericNetwork, RegistryRepresentation::TypedDomain));
-
-		const auto* registry = snapshot.GetNetworkRegistries().Find(rule.Key);
-		if (!registry) return result;
-
-		if (rule.EntryData != RegistryEntryDataPolicy::Forbidden)
-			result.RegistryData = BuildRegistryData(rule.Key, *registry, omit_payloads);
-		const auto* tags = snapshot.GetNetworkRegistryTags().Find(rule.Key);
-		if (rule.Tags == RegistryTagPolicy::Required || (rule.Tags == RegistryTagPolicy::Optional && tags && !tags->Empty()))
-			result.Tags = BuildTags(rule.Key, tags);
-
-		return result;
+		std::unreachable();
 	}
 }

@@ -9,19 +9,21 @@ namespace {
 	using Aurore::Data::MinecraftDataCorpus;
 	using Aurore::Data::VanillaDataImportError;
 	using Aurore::Data::VanillaDataImportErrorCode;
+	using Aurore::Data::VanillaDataImportStage;
 	using Aurore::Util::RegistryGeneration;
-	using Aurore::Util::RegistrySnapshotError;
 
 	constexpr std::string_view SupportedMinecraftVersion{ "1.21.11" };
 	constexpr std::int32_t SupportedProtocolVersion{ 774 };
 }
 
 namespace Aurore::Data {
-	std::expected<std::shared_ptr<const Aurore::Util::RegistrySnapshot>, VanillaDataImportError> VanillaDataImporter::Import(const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation) {
+	std::expected<std::shared_ptr<const Aurore::Util::RegistrySnapshot>, VanillaDataImportError> VanillaDataImporter::Import(const MinecraftDataCorpus& corpus, RegistryGeneration generation) {
 		if (corpus.Version.Id != SupportedMinecraftVersion)
 			return std::unexpected(Detail::MakeImportError(VanillaDataImportErrorCode::UnsupportedMinecraftVersion, corpus, generation, VanillaDataImportStage::TargetValidation));
+
 		if (corpus.Version.ProtocolVersion != SupportedProtocolVersion)
 			return std::unexpected(Detail::MakeImportError(VanillaDataImportErrorCode::UnsupportedProtocolVersion, corpus, generation, VanillaDataImportStage::TargetValidation));
+
 		if (generation == Aurore::Util::NoRegistryGeneration)
 			return std::unexpected(Detail::MakeImportError(VanillaDataImportErrorCode::InvalidGeneration, corpus, generation, VanillaDataImportStage::TargetValidation));
 
@@ -38,6 +40,9 @@ namespace Aurore::Data {
 
 		const auto network_registries = Detail::ImportNetworkRegistries(corpus, generation, builder);
 		if (!network_registries) return std::unexpected(network_registries.error());
+
+		const auto tags = Detail::ImportTags(corpus, generation, builder);
+		if (!tags) return std::unexpected(tags.error());
 
 		auto snapshot = std::move(builder).Build(generation);
 		if (!snapshot) {

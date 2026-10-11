@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -68,6 +69,7 @@ namespace Aurore::Tests {
 				WriteDimensionFixtures();
 				WriteBiomeFixtures();
 				WriteNetworkFixtures();
+				WriteTagFixtures();
 			}
 
 			void TearDown() override {
@@ -93,34 +95,48 @@ namespace Aurore::Tests {
 					"reports/registries.json",
 					R"json({
 						"minecraft:block": {
-							"default": "minecraft:air",
 							"entries": {
-								"minecraft:dirt": {
-									"protocol_id": 2
-								},
-								"minecraft:air": {
-									"protocol_id": 0
-								},
-								"minecraft:stone": {
-									"protocol_id": 1
-								}
+								"minecraft:dirt": { "protocol_id": 2 },
+								"minecraft:air": { "protocol_id": 0 },
+								"minecraft:stone": { "protocol_id": 1 }
 							},
 							"protocol_id": 4
 						},
 						"minecraft:item": {
-							"default": "minecraft:air",
 							"entries": {
-								"minecraft:stone": {
-									"protocol_id": 1
-								},
-								"minecraft:dirt": {
-									"protocol_id": 2
-								},
-								"minecraft:air": {
-									"protocol_id": 0
-								}
+								"minecraft:stone": { "protocol_id": 1 },
+								"minecraft:dirt": { "protocol_id": 2 },
+								"minecraft:air": { "protocol_id": 0 }
 							},
 							"protocol_id": 7
+						},
+						"minecraft:entity_type": {
+							"entries": {
+								"minecraft:zombie": { "protocol_id": 0 },
+								"minecraft:player": { "protocol_id": 1 }
+							}
+						},
+						"minecraft:fluid": {
+							"entries": {
+								"minecraft:empty": { "protocol_id": 0 },
+								"minecraft:water": { "protocol_id": 1 }
+							}
+						},
+						"minecraft:game_event": {
+							"entries": {
+								"minecraft:block_activate": { "protocol_id": 0 },
+								"minecraft:step": { "protocol_id": 1 }
+							}
+						},
+						"minecraft:point_of_interest_type": {
+							"entries": {
+								"minecraft:armorer": { "protocol_id": 0 }
+							}
+						},
+						"minecraft:potion": {
+							"entries": {
+								"minecraft:water": { "protocol_id": 0 }
+							}
 						}
 					})json");
 			}
@@ -423,6 +439,96 @@ namespace Aurore::Tests {
 					})json");
 			}
 
+			void WriteTagFixtures() const {
+				WriteFile(
+					"data/minecraft/tags/block/base.json",
+					R"json({
+						"values": [
+							"minecraft:stone",
+							{
+								"id": "minecraft:missing_optional_block",
+								"required": false
+							}
+						]
+					})json");
+
+				WriteFile(
+					"data/minecraft/tags/block/nested.json",
+					R"json({
+						"values": [
+							"#minecraft:base",
+							"minecraft:dirt",
+							"minecraft:stone"
+						]
+					})json");
+
+				WriteFile(
+					"data/minecraft/tags/item/building.json",
+					R"json({
+						"replace": false,
+						"values": [
+							"minecraft:stone",
+							"minecraft:dirt"
+						]
+					})json");
+
+				WriteFile(
+					"data/minecraft/tags/worldgen/biome/is_overworld.json",
+					R"json({
+						"values": [
+							"minecraft:plains"
+						]
+					})json");
+
+				WriteFile(
+					"data/minecraft/tags/damage_type/bypasses_test.json",
+					R"json({
+						"values": [
+							"minecraft:generic"
+						]
+					})json");
+
+				WriteFile(
+					"data/minecraft/tags/entity_type/friendly_test.json",
+					R"json({
+						"values": [
+							"minecraft:player"
+						]
+					})json");
+
+				WriteFile(
+					"data/minecraft/tags/fluid/water_test.json",
+					R"json({
+						"values": [
+							"minecraft:water"
+						]
+					})json");
+
+				WriteFile(
+					"data/minecraft/tags/game_event/vibration_test.json",
+					R"json({
+						"values": [
+							"minecraft:step"
+						]
+					})json");
+
+				WriteFile(
+					"data/minecraft/tags/point_of_interest_type/job_site_test.json",
+					R"json({
+						"values": [
+							"minecraft:armorer"
+						]
+					})json");
+
+				WriteFile(
+					"data/minecraft/tags/potion/basic_test.json",
+					R"json({
+						"values": [
+							"minecraft:water"
+						]
+					})json");
+			}
+
 			[[nodiscard]] MinecraftDataCorpus MakeCorpus(
 				std::string_view version = "1.21.11",
 				std::int32_t protocol_version = 774) const {
@@ -485,6 +591,47 @@ namespace Aurore::Tests {
 		ASSERT_NE(stone_item, nullptr);
 		EXPECT_TRUE(stone_block->Value.Data.Empty());
 		EXPECT_TRUE(stone_item->Value.Data.Empty());
+
+		const auto& static_registries = (*result)->GetStaticRegistries();
+		ASSERT_EQ(static_registries.Size(), 5u);
+
+		const auto entity_type_key = ParseRequired("minecraft:entity_type");
+		const auto* entity_types = static_registries.Find(entity_type_key);
+		ASSERT_NE(entity_types, nullptr);
+		ASSERT_EQ(entity_types->Size(), 2u);
+		EXPECT_EQ(*entity_types->FindRuntimeId(ParseRequired("minecraft:zombie")), 0u);
+		EXPECT_EQ(*entity_types->FindRuntimeId(ParseRequired("minecraft:player")), 1u);
+
+		const auto& block_tags = (*result)->GetBlockTags();
+		ASSERT_EQ(block_tags.Size(), 2u);
+
+		const auto* nested_block_tag =
+			block_tags.Find(ParseRequired("minecraft:nested"));
+		ASSERT_NE(nested_block_tag, nullptr);
+		ASSERT_EQ(nested_block_tag->Members.size(), 2u);
+		EXPECT_EQ(nested_block_tag->Members[0], 1u);
+		EXPECT_EQ(nested_block_tag->Members[1], 2u);
+
+		const auto& item_tags = (*result)->GetItemTags();
+		ASSERT_EQ(item_tags.Size(), 1u);
+
+		const auto& biome_tags = (*result)->GetBiomeTags();
+		ASSERT_EQ(biome_tags.Size(), 1u);
+
+		const auto& network_tags = (*result)->GetNetworkRegistryTags();
+		const auto* damage_tags =
+			network_tags.Find(ParseRequired("minecraft:damage_type"));
+		ASSERT_NE(damage_tags, nullptr);
+		ASSERT_EQ(damage_tags->Size(), 1u);
+
+		const auto& static_tags = (*result)->GetStaticRegistryTags();
+		ASSERT_EQ(static_tags.Size(), 5u);
+		ASSERT_EQ(static_tags.GetTotalTagCount(), 5u);
+
+		const auto* entity_tags =
+			static_tags.Find(ParseRequired("minecraft:entity_type"));
+		ASSERT_NE(entity_tags, nullptr);
+		ASSERT_EQ(entity_tags->Size(), 1u);
 
 		EXPECT_EQ((*result)->GetNetworkRegistries().Size(), 21u);
 		EXPECT_EQ((*result)->GetNetworkRegistries().GetTotalEntryCount(), 21u);
@@ -913,6 +1060,130 @@ namespace Aurore::Tests {
 		const auto* registry = (*result)->GetNetworkRegistries().Find(registry_key);
 		ASSERT_NE(registry, nullptr);
 		EXPECT_TRUE(registry->Empty());
+	}
+
+
+	TEST_F(VanillaDataImporterTests, RejectsRequiredMissingTagMember) {
+		WriteFile(
+			"data/minecraft/tags/block/base.json",
+			R"json({
+				"values": [
+					"minecraft:definitely_missing"
+				]
+			})json");
+
+		const auto result = VanillaDataImporter::Import(MakeCorpus(), 1);
+
+		ASSERT_FALSE(result.has_value());
+		EXPECT_EQ(result.error().Code, VanillaDataImportErrorCode::MissingRegistryMember);
+		EXPECT_EQ(result.error().Stage, VanillaDataImportStage::Tags);
+		ASSERT_TRUE(result.error().Key.has_value());
+		EXPECT_EQ(*result.error().Key, ParseRequired("minecraft:base"));
+		EXPECT_EQ(result.error().Field, "minecraft:definitely_missing");
+	}
+
+	TEST_F(VanillaDataImporterTests, RejectsCyclicNestedTags) {
+		WriteFile(
+			"data/minecraft/tags/block/base.json",
+			R"json({
+				"values": [
+					"#minecraft:nested"
+				]
+			})json");
+
+		WriteFile(
+			"data/minecraft/tags/block/nested.json",
+			R"json({
+				"values": [
+					"#minecraft:base"
+				]
+			})json");
+
+		const auto result = VanillaDataImporter::Import(MakeCorpus(), 1);
+
+		ASSERT_FALSE(result.has_value());
+		EXPECT_EQ(result.error().Code, VanillaDataImportErrorCode::CyclicTagReference);
+		EXPECT_EQ(result.error().Stage, VanillaDataImportStage::Tags);
+		EXPECT_FALSE(result.error().Detail.empty());
+	}
+
+	TEST(VanillaDataImporterFullCorpusTests, ImportsGeneratedMinecraft12111CorpusWhenConfigured) {
+		const char* root_value = std::getenv("AURORE_TEST_MINECRAFT_DATA_ROOT");
+		if (root_value == nullptr || *root_value == '\0')
+			GTEST_SKIP()
+				<< "Set AURORE_TEST_MINECRAFT_DATA_ROOT to a generated Minecraft 1.21.11 corpus root.";
+
+		const std::filesystem::path root{ root_value };
+
+		const auto corpus = MinecraftDataCorpusFactory::FromPreparation(
+			RawDataPreparationResult{
+				.Version = {
+					.Id = "1.21.11",
+					.ProtocolVersion = 774,
+				},
+				.SourceSha1 = "0123456789abcdef0123456789abcdef01234567",
+				.GenerationRoot = root,
+				.ReportsRoot = root / "reports",
+				.DataRoot = root / "data",
+			});
+
+		ASSERT_TRUE(corpus.has_value());
+
+		const auto result = VanillaDataImporter::Import(*corpus, 1);
+
+		ASSERT_TRUE(result.has_value())
+			<< "Full-corpus import failed with code "
+			<< static_cast<int>(result.error().Code)
+			<< ", stage "
+			<< static_cast<int>(result.error().Stage)
+			<< ", field "
+			<< result.error().Field
+			<< ", detail "
+			<< result.error().Detail;
+
+		ASSERT_NE(*result, nullptr);
+
+		EXPECT_EQ((*result)->GetBlocks().Size(), 1166u);
+		EXPECT_EQ((*result)->GetItems().Size(), 1505u);
+		EXPECT_EQ((*result)->GetNetworkRegistries().Size(), 21u);
+		EXPECT_EQ((*result)->GetStaticRegistries().Size(), 5u);
+
+		const auto* entity_types =
+			(*result)->GetStaticRegistries().Find(
+				ParseRequired("minecraft:entity_type"));
+		const auto* fluids =
+			(*result)->GetStaticRegistries().Find(
+				ParseRequired("minecraft:fluid"));
+		const auto* game_events =
+			(*result)->GetStaticRegistries().Find(
+				ParseRequired("minecraft:game_event"));
+		const auto* poi_types =
+			(*result)->GetStaticRegistries().Find(
+				ParseRequired("minecraft:point_of_interest_type"));
+		const auto* potions =
+			(*result)->GetStaticRegistries().Find(
+				ParseRequired("minecraft:potion"));
+
+		ASSERT_NE(entity_types, nullptr);
+		ASSERT_NE(fluids, nullptr);
+		ASSERT_NE(game_events, nullptr);
+		ASSERT_NE(poi_types, nullptr);
+		ASSERT_NE(potions, nullptr);
+
+		EXPECT_EQ(entity_types->Size(), 157u);
+		EXPECT_EQ(fluids->Size(), 5u);
+		EXPECT_EQ(game_events->Size(), 60u);
+		EXPECT_EQ(poi_types->Size(), 21u);
+		EXPECT_EQ(potions->Size(), 46u);
+
+		EXPECT_GT((*result)->GetBlockTags().Size(), 0u);
+		EXPECT_GT((*result)->GetItemTags().Size(), 0u);
+		EXPECT_GT((*result)->GetBiomeTags().Size(), 0u);
+		EXPECT_GT((*result)->GetNetworkRegistryTags().GetTotalTagCount(), 0u);
+
+		const auto& static_tags = (*result)->GetStaticRegistryTags();
+		EXPECT_EQ(static_tags.Size(), 5u);
+		EXPECT_GT(static_tags.GetTotalTagCount(), 0u);
 	}
 
 }

@@ -1,3 +1,4 @@
+#include <Aurore/Protocol/ConfigurationRegistryAdapter.hpp>
 #include <Aurore/Protocol/RegistryCompatibility.hpp>
 
 #include <Aurore/Util/ResourceLocation.hpp>
@@ -12,6 +13,7 @@
 
 namespace Aurore::Tests {
 	namespace {
+		using Aurore::Protocol::ConfigurationRegistryAdapter;
 		using Aurore::Protocol::Protocol774RegistryManifest;
 		using Aurore::Protocol::RegistryCompatibilityEvidence;
 		using Aurore::Protocol::RegistryCompatibilityInventoryEntry;
@@ -103,7 +105,7 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			manifest->GetCompleteness(),
 			RegistryManifestCompleteness::Provisional);
-		EXPECT_EQ(manifest->GetRules().size(), 25u);
+		EXPECT_EQ(manifest->GetRules().size(), 30u);
 	}
 
 	TEST(
@@ -119,10 +121,13 @@ namespace Aurore::Tests {
 			manifest->Find(Location("minecraft:cat_variant"));
 		const auto* timeline =
 			manifest->Find(Location("minecraft:timeline"));
+		const auto* entity_type =
+			manifest->Find(Location("minecraft:entity_type"));
 
 		ASSERT_NE(dimension_type, nullptr);
 		ASSERT_NE(cat_variant, nullptr);
 		ASSERT_NE(timeline, nullptr);
+		ASSERT_NE(entity_type, nullptr);
 
 		EXPECT_EQ(
 			dimension_type->Representation,
@@ -133,6 +138,12 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			timeline->Representation,
 			RegistryRepresentation::GenericNetwork);
+		EXPECT_EQ(
+			entity_type->Representation,
+			RegistryRepresentation::StaticIdentity);
+		EXPECT_EQ(
+			entity_type->EntryData,
+			RegistryEntryDataPolicy::Forbidden);
 
 		EXPECT_EQ(dimension_type->MinimumEntries, 1u);
 		EXPECT_EQ(cat_variant->MinimumEntries, 1u);
@@ -450,4 +461,102 @@ namespace Aurore::Tests {
 			<< "Registry validation failed with code "
 			<< static_cast<int>(validation.error().Code);
 	}
+
+	TEST(
+		RegistrySnapshotInventoryAdapterTests,
+		ProjectsStaticIdentityTagsWithoutRegistryDataEntries) {
+
+		RegistrySnapshotBuilder snapshot_builder;
+
+		const auto registry_key =
+			Location("minecraft:entity_type");
+
+		auto registry =
+			snapshot_builder.StaticRegistries()
+			.CreateRegistryBuilder(registry_key);
+
+		ASSERT_TRUE(registry.Declare(Location("minecraft:zombie")).has_value());
+		ASSERT_TRUE(registry.Declare(Location("minecraft:player")).has_value());
+
+		auto built_registry = std::move(registry).Build();
+		ASSERT_TRUE(built_registry.has_value());
+
+		ASSERT_TRUE(
+			snapshot_builder.StaticRegistries()
+			.Declare(std::move(*built_registry))
+			.has_value());
+
+		auto tags =
+			snapshot_builder.StaticRegistryTags()
+			.CreateSectionBuilder(registry_key);
+
+		ASSERT_TRUE(
+			tags.Declare(
+				Location("minecraft:test"),
+				{ Location("minecraft:player") })
+			.has_value());
+
+		ASSERT_TRUE(
+			snapshot_builder.StaticRegistryTags()
+			.Declare(std::move(tags))
+			.has_value());
+
+		auto snapshot =
+			std::move(snapshot_builder).Build(1);
+
+		ASSERT_TRUE(snapshot.has_value());
+
+		auto rule =
+			MakeRule("minecraft:entity_type");
+
+		rule.Presence = RegistryPresence::Optional;
+		rule.EntryData = RegistryEntryDataPolicy::Forbidden;
+		rule.Tags = RegistryTagPolicy::Optional;
+		rule.Representation = RegistryRepresentation::StaticIdentity;
+		rule.MinimumEntries = 0;
+		rule.SchemaContract.clear();
+		rule.SourceCodec.clear();
+
+		auto manifest =
+			RegistryCompatibilityManifest::Create(
+				"1.21.11",
+				774,
+				RegistryManifestCompleteness::Provisional,
+				{ std::move(rule) });
+
+		ASSERT_TRUE(manifest.has_value());
+
+		const auto inventory =
+			RegistrySnapshotInventoryAdapter::Build(
+				*manifest,
+				**snapshot);
+
+		ASSERT_TRUE(inventory.has_value());
+		ASSERT_EQ(inventory->size(), 1u);
+
+		EXPECT_EQ((*inventory)[0].Key, registry_key);
+		EXPECT_EQ((*inventory)[0].EntryCount, 0u);
+		EXPECT_EQ((*inventory)[0].EntriesWithData, 0u);
+		EXPECT_EQ((*inventory)[0].TagCount, 1u);
+
+		const auto validation =
+			RegistryCompatibilityValidator::Validate(
+				*manifest,
+				*inventory);
+
+		EXPECT_TRUE(validation.has_value());
+
+		const auto projection =
+			ConfigurationRegistryAdapter::Build(
+				manifest->GetRules()[0],
+				**snapshot);
+
+		ASSERT_TRUE(projection.has_value());
+		EXPECT_FALSE(projection->RegistryData.has_value());
+		ASSERT_TRUE(projection->Tags.has_value());
+		ASSERT_EQ(projection->Tags->Tags.size(), 1u);
+		ASSERT_EQ(projection->Tags->Tags[0].Members.size(), 1u);
+		EXPECT_EQ(projection->Tags->Tags[0].Members[0], 1u);
+	}
+
 }

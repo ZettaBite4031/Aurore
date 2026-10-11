@@ -19,6 +19,7 @@ namespace Aurore::Data {
 		DimensionTypes,
 		Biomes,
 		NetworkRegistries,
+		Tags,
 		SnapshotBuild,
 	};
 
@@ -43,7 +44,16 @@ namespace Aurore::Data {
 		UnsupportedJsonValue,
 		HeterogeneousJsonArray,
 
+		MissingTagReference,
+		MissingRegistryMember,
+		CyclicTagReference,
+
 		RegistryDeclarationFailed,
+		TagDeclarationFailed,
+		StaticRegistryBuildFailed,
+		StaticRegistryCollectionDeclarationFailed,
+		StaticRegistryTagCollectionDeclarationFailed,
+		NetworkRegistryTagCollectionDeclarationFailed,
 		NetworkRegistryBuildFailed,
 		NetworkRegistryCollectionDeclarationFailed,
 		SnapshotBuildFailed,
@@ -64,7 +74,12 @@ namespace Aurore::Data {
 		std::error_code SystemError;
 
 		std::optional<Aurore::Util::RegistryDeclarationError> DeclarationError;
+		std::optional<Aurore::Util::RegistryTagDeclarationError> TagDeclarationError;
+		std::optional<Aurore::Util::StaticRegistryCollectionDeclarationError> StaticRegistryCollectionError;
+		std::optional<Aurore::Util::StaticRegistryTagCollectionDeclarationError> StaticRegistryTagCollectionError;
+		std::optional<Aurore::Util::NetworkRegistryTagCollectionDeclarationError> NetworkRegistryTagCollectionError;
 		std::optional<Aurore::Util::RegistryBuildError> NetworkRegistryBuildError;
+		std::optional<Aurore::Util::RegistryBuildError> StaticRegistryBuildError;
 		std::optional<Aurore::Util::NetworkRegistryCollectionDeclarationError> NetworkRegistryCollectionError;
 		std::optional<Aurore::Util::RegistrySnapshotError> SnapshotError;
 	};

@@ -46,32 +46,63 @@ namespace {
 }
 
 namespace Aurore::Util {
-	RegistrySnapshot::RegistrySnapshot(RegistryGeneration generation, BlockRegistry blocks, ItemRegistry items, BiomeRegistry biomes,
-		DimensionTypeRegistry dimension_types, BlockTagSet block_tags, ItemTagSet item_tags, BiomeTagSet biome_tags, DimensionTypeTagSet dimension_type_tags,
-		NetworkRegistryCollection network_registries, NetworkRegistryTagCollection network_registry_tags) noexcept
-		: m_Generation(generation), m_Blocks(std::move(blocks)), m_Items(std::move(items)), m_Biomes(std::move(biomes)),
-		m_DimensionTypes(std::move(dimension_types)), m_BlockTags(std::move(block_tags)), m_ItemTags(std::move(item_tags)), m_BiomeTags(std::move(biome_tags)),
-		m_DimensionTypeTags(std::move(dimension_type_tags)), m_NetworkRegistries(std::move(network_registries)), m_NetworkRegistryTags(std::move(network_registry_tags)) {}
+	RegistrySnapshot::RegistrySnapshot(
+		RegistryGeneration generation,
+		BlockRegistry blocks,
+		ItemRegistry items,
+		BiomeRegistry biomes,
+		DimensionTypeRegistry dimension_types,
+		BlockTagSet block_tags,
+		ItemTagSet item_tags,
+		BiomeTagSet biome_tags,
+		DimensionTypeTagSet dimension_type_tags,
+		NetworkRegistryCollection network_registries,
+		NetworkRegistryTagCollection network_registry_tags,
+		StaticRegistryCollection static_registries,
+		StaticRegistryTagCollection static_registry_tags) noexcept
+		: m_Generation(generation),
+		m_Blocks(std::move(blocks)),
+		m_Items(std::move(items)),
+		m_Biomes(std::move(biomes)),
+		m_DimensionTypes(std::move(dimension_types)),
+		m_BlockTags(std::move(block_tags)),
+		m_ItemTags(std::move(item_tags)),
+		m_BiomeTags(std::move(biome_tags)),
+		m_DimensionTypeTags(std::move(dimension_type_tags)),
+		m_NetworkRegistries(std::move(network_registries)),
+		m_NetworkRegistryTags(std::move(network_registry_tags)),
+		m_StaticRegistries(std::move(static_registries)),
+		m_StaticRegistryTags(std::move(static_registry_tags)) {}
 
 	RegistrySnapshotBuilder::RegistrySnapshotBuilder(RegistrySnapshotLimits limits) noexcept
-		: m_Blocks(limits.Blocks), m_Items(limits.Items), m_Biomes(limits.Biomes), m_DimensionTypes(limits.DimensionTypes),
-		m_BlockTags(limits.BlockTags), m_ItemTags(limits.ItemTags), m_BiomeTags(limits.BiomeTags), m_DimensionTypeTags(limits.DimensionTypeTags),
-		m_NetworkRegistries(limits.NetworkRegistries), m_NetworkRegistryTags(limits.NetworkRegistryTags) {}
+		: m_Blocks(limits.Blocks),
+		m_Items(limits.Items),
+		m_Biomes(limits.Biomes),
+		m_DimensionTypes(limits.DimensionTypes),
+		m_BlockTags(limits.BlockTags),
+		m_ItemTags(limits.ItemTags),
+		m_BiomeTags(limits.BiomeTags),
+		m_DimensionTypeTags(limits.DimensionTypeTags),
+		m_NetworkRegistries(limits.NetworkRegistries),
+		m_NetworkRegistryTags(limits.NetworkRegistryTags),
+		m_StaticRegistries(limits.StaticRegistries),
+		m_StaticRegistryTags(limits.StaticRegistryTags) {}
 
-	std::expected<void, RegistrySnapshotError> RegistrySnapshotBuilder::ValidateGeneration(RegistryGeneration generation) noexcept {
+	std::expected<void, RegistrySnapshotError>
+	RegistrySnapshotBuilder::ValidateGeneration(RegistryGeneration generation) noexcept {
 		if (generation != NoRegistryGeneration) return {};
+
 		return std::unexpected(RegistrySnapshotError{
 			.Code = RegistrySnapshotErrorCode::InvalidGeneration,
-			.Registry = std::nullopt,
-			.Key = std::nullopt,
-			.DeclarationIndex = 0,
-			.ReferencedRegistry = std::nullopt,
-			.ReferencedKey = std::nullopt,
-			});
+		});
 	}
 
-	RegistrySnapshotError RegistrySnapshotBuilder::TranslateBuildError(RegistryKind registry, const RegistryBuildError& error) {
+	RegistrySnapshotError RegistrySnapshotBuilder::TranslateBuildError(
+		RegistryKind registry,
+		const RegistryBuildError& error) {
+
 		RegistrySnapshotErrorCode code{ RegistrySnapshotErrorCode::ValidationRejected };
+
 		switch (error.Code) {
 		case RegistryBuildErrorCode::MissingReference:
 			code = RegistrySnapshotErrorCode::MissingReference;
@@ -89,21 +120,18 @@ namespace Aurore::Util {
 			.Registry = registry,
 			.Key = error.Key,
 			.DeclarationIndex = error.DeclarationIndex,
-			.ReferencedRegistry = std::nullopt,
 			.ReferencedKey = error.ReferencedKey,
 		};
 	}
 
-	RegistrySnapshotError RegistrySnapshotBuilder::TranslateTagBuildError(RegistryKind registry, const RegistryTagBuildError& error) {
+	RegistrySnapshotError RegistrySnapshotBuilder::TranslateTagBuildError(
+		RegistryKind registry,
+		const RegistryTagBuildError& error) {
+
 		if (error.Code == RegistryTagBuildErrorCode::InvalidGeneration)
 			return RegistrySnapshotError{
 				.Code = RegistrySnapshotErrorCode::InvalidGeneration,
-				.Registry = std::nullopt,
-				.Key = std::nullopt,
-				.DeclarationIndex = 0,
-				.ReferencedRegistry = std::nullopt,
-				.ReferencedKey = std::nullopt,
-		};
+			};
 
 		return RegistrySnapshotError{
 			.Code = RegistrySnapshotErrorCode::MissingReference,
@@ -115,7 +143,56 @@ namespace Aurore::Util {
 		};
 	}
 
-	std::expected<void, RegistrySnapshotError> RegistrySnapshotBuilder::ValidateTags(RegistryGeneration generation) const {
+	RegistrySnapshotError RegistrySnapshotBuilder::TranslateNetworkTagBuildError(
+		const NetworkRegistryTagCollectionBuildError& error) {
+
+		if (error.Code == NetworkRegistryTagCollectionBuildErrorCode::InvalidGeneration)
+			return RegistrySnapshotError{
+				.Code = RegistrySnapshotErrorCode::InvalidGeneration,
+			};
+
+		if (error.Code == NetworkRegistryTagCollectionBuildErrorCode::MissingRegistry)
+			return RegistrySnapshotError{
+				.Code = RegistrySnapshotErrorCode::MissingReference,
+				.Key = error.RegistryKey,
+				.DeclarationIndex = error.SectionIndex,
+				.ReferencedKey = error.RegistryKey,
+			};
+
+		return RegistrySnapshotError{
+			.Code = RegistrySnapshotErrorCode::MissingReference,
+			.Key = error.TagKey,
+			.DeclarationIndex = error.TagIndex,
+			.ReferencedKey = error.MemberKey,
+		};
+	}
+
+	RegistrySnapshotError RegistrySnapshotBuilder::TranslateStaticTagBuildError(
+		const StaticRegistryTagCollectionBuildError& error) {
+
+		if (error.Code == StaticRegistryTagCollectionBuildErrorCode::InvalidGeneration)
+			return RegistrySnapshotError{
+				.Code = RegistrySnapshotErrorCode::InvalidGeneration,
+			};
+
+		if (error.Code == StaticRegistryTagCollectionBuildErrorCode::MissingRegistry)
+			return RegistrySnapshotError{
+				.Code = RegistrySnapshotErrorCode::MissingReference,
+				.Key = error.RegistryKey,
+				.DeclarationIndex = error.SectionIndex,
+				.ReferencedKey = error.RegistryKey,
+			};
+
+		return RegistrySnapshotError{
+			.Code = RegistrySnapshotErrorCode::MissingReference,
+			.Key = error.TagKey,
+			.DeclarationIndex = error.TagIndex,
+			.ReferencedKey = error.MemberKey,
+		};
+	}
+
+	std::expected<void, RegistrySnapshotError>
+	RegistrySnapshotBuilder::ValidateTags(RegistryGeneration generation) const {
 		const auto block_tags = m_BlockTags.Validate(generation, m_Blocks.GetDeclarationView());
 		if (!block_tags)
 			return std::unexpected(TranslateTagBuildError(RegistryKind::Block, block_tags.error()));
@@ -128,22 +205,70 @@ namespace Aurore::Util {
 		if (!biome_tags)
 			return std::unexpected(TranslateTagBuildError(RegistryKind::Biome, biome_tags.error()));
 
-		const auto dimension_type_tags = m_DimensionTypeTags.Validate(generation, m_DimensionTypes.GetDeclarationView());
+		const auto dimension_type_tags =
+			m_DimensionTypeTags.Validate(generation, m_DimensionTypes.GetDeclarationView());
 		if (!dimension_type_tags)
-			return std::unexpected(TranslateTagBuildError(RegistryKind::DimensionType, dimension_type_tags.error()));
+			return std::unexpected(
+				TranslateTagBuildError(RegistryKind::DimensionType, dimension_type_tags.error()));
 
-		const auto network_registry_tags = m_NetworkRegistryTags.Validate(generation, m_NetworkRegistries);
-		if (!network_registry_tags)
-			return std::unexpected(TranslateNetworkTagBuildError(network_registry_tags.error()));
+		const auto network_tags = m_NetworkRegistryTags.Validate(generation, m_NetworkRegistries);
+		if (!network_tags)
+			return std::unexpected(TranslateNetworkTagBuildError(network_tags.error()));
+
+		const auto static_tags = m_StaticRegistryTags.Validate(generation, m_StaticRegistries);
+		if (!static_tags)
+			return std::unexpected(TranslateStaticTagBuildError(static_tags.error()));
 
 		return {};
 	}
 
-	std::expected<std::shared_ptr<const RegistrySnapshot>, RegistrySnapshotError> RegistrySnapshotBuilder::Build(RegistryGeneration generation)&& {
+	std::expected<void, RegistrySnapshotError>
+	RegistrySnapshotBuilder::ValidateRegistryOwnership() const {
+		for (std::size_t index{ 0 }; index < m_NetworkRegistries.GetRegistries().size(); ++index) {
+			const auto& registry = m_NetworkRegistries.GetRegistries()[index];
+			const auto typed_kind = FindTypedRegistryKind(registry.GetKey());
+
+			if (typed_kind)
+				return std::unexpected(RegistrySnapshotError{
+					.Code = RegistrySnapshotErrorCode::RegistryRepresentationCollision,
+					.Registry = *typed_kind,
+					.Key = registry.GetKey(),
+					.DeclarationIndex = index,
+					.ReferencedKey = registry.GetKey(),
+				});
+
+			if (m_StaticRegistries.Contains(registry.GetKey()))
+				return std::unexpected(RegistrySnapshotError{
+					.Code = RegistrySnapshotErrorCode::RegistryRepresentationCollision,
+					.Key = registry.GetKey(),
+					.DeclarationIndex = index,
+					.ReferencedKey = registry.GetKey(),
+				});
+		}
+
+		for (std::size_t index{ 0 }; index < m_StaticRegistries.GetRegistries().size(); ++index) {
+			const auto& registry = m_StaticRegistries.GetRegistries()[index];
+			const auto typed_kind = FindTypedRegistryKind(registry.GetKey());
+
+			if (typed_kind)
+				return std::unexpected(RegistrySnapshotError{
+					.Code = RegistrySnapshotErrorCode::RegistryRepresentationCollision,
+					.Registry = *typed_kind,
+					.Key = registry.GetKey(),
+					.DeclarationIndex = index,
+					.ReferencedKey = registry.GetKey(),
+				});
+		}
+
+		return {};
+	}
+
+	std::expected<std::shared_ptr<const RegistrySnapshot>, RegistrySnapshotError>
+	RegistrySnapshotBuilder::Build(RegistryGeneration generation)&& {
 		const auto generation_result = ValidateGeneration(generation);
 		if (!generation_result) return std::unexpected(generation_result.error());
 
-		const auto ownership_validation = ValidateNetworkRegistryOwnership();
+		const auto ownership_validation = ValidateRegistryOwnership();
 		if (!ownership_validation) return std::unexpected(ownership_validation.error());
 
 		const auto tag_validation = ValidateTags(generation);
@@ -152,57 +277,8 @@ namespace Aurore::Util {
 		return std::move(*this).Finalize(generation);
 	}
 
-	std::expected<void, RegistrySnapshotError> RegistrySnapshotBuilder::ValidateNetworkRegistryOwnership() const {
-		const auto registries = m_NetworkRegistries.GetRegistries();
-		for (std::size_t index{ 0 }; index < registries.size(); index++) {
-			const auto typed_kind = FindTypedRegistryKind(registries[index].GetKey());
-			if (!typed_kind) continue;
-			return std::unexpected(RegistrySnapshotError{
-				.Code = RegistrySnapshotErrorCode::RegistryRepresentationCollision,
-				.Registry = *typed_kind,
-				.Key = registries[index].GetKey(),
-				.DeclarationIndex = index,
-				.ReferencedRegistry = std::nullopt,
-				.ReferencedKey = registries[index].GetKey(),
-			});
-		}
-		return {};
-	}
-
-	RegistrySnapshotError RegistrySnapshotBuilder::TranslateNetworkTagBuildError(const NetworkRegistryTagCollectionBuildError& error) {
-		if (error.Code == NetworkRegistryTagCollectionBuildErrorCode::InvalidGeneration)
-			return RegistrySnapshotError{
-				.Code = RegistrySnapshotErrorCode::InvalidGeneration,
-				.Registry = std::nullopt,
-				.Key = std::nullopt,
-				.DeclarationIndex = 0,
-				.ReferencedRegistry = std::nullopt,
-				.ReferencedKey = std::nullopt,
-			};
-
-
-		if (error.Code == NetworkRegistryTagCollectionBuildErrorCode::MissingRegistry)
-			return RegistrySnapshotError{
-				.Code = RegistrySnapshotErrorCode::MissingReference,
-				.Registry = std::nullopt,
-				.Key = error.RegistryKey,
-				.DeclarationIndex = error.SectionIndex,
-				.ReferencedRegistry = std::nullopt,
-				.ReferencedKey = error.RegistryKey,
-			};
-
-
-		return RegistrySnapshotError{
-			.Code = RegistrySnapshotErrorCode::MissingReference,
-			.Registry = std::nullopt,
-			.Key = error.TagKey,
-			.DeclarationIndex = error.TagIndex,
-			.ReferencedRegistry = std::nullopt,
-			.ReferencedKey = error.MemberKey,
-		};
-	}
-
-	std::expected<std::shared_ptr<const RegistrySnapshot>, RegistrySnapshotError> RegistrySnapshotBuilder::Finalize(RegistryGeneration generation)&& {
+	std::expected<std::shared_ptr<const RegistrySnapshot>, RegistrySnapshotError>
+	RegistrySnapshotBuilder::Finalize(RegistryGeneration generation)&& {
 		auto blocks = std::move(m_Blocks).Build();
 		if (!blocks)
 			return std::unexpected(TranslateBuildError(RegistryKind::Block, blocks.error()));
@@ -231,23 +307,33 @@ namespace Aurore::Util {
 		if (!biome_tags)
 			return std::unexpected(TranslateTagBuildError(RegistryKind::Biome, biome_tags.error()));
 
-		auto dimension_type_tags = std::move(m_DimensionTypeTags).Build(generation, *dimension_types);
+		auto dimension_type_tags =
+			std::move(m_DimensionTypeTags).Build(generation, *dimension_types);
 		if (!dimension_type_tags)
-			return std::unexpected(TranslateTagBuildError(RegistryKind::DimensionType, dimension_type_tags.error()));
+			return std::unexpected(
+				TranslateTagBuildError(RegistryKind::DimensionType, dimension_type_tags.error()));
 
 		auto network_registries = std::move(m_NetworkRegistries).Build(generation);
 		if (!network_registries)
 			return std::unexpected(RegistrySnapshotError{
 				.Code = RegistrySnapshotErrorCode::InvalidGeneration,
-				.Registry = std::nullopt,
-				.Key = std::nullopt,
-				.DeclarationIndex = 0,
-				.ReferencedRegistry = std::nullopt,
-				.ReferencedKey = std::nullopt,
 			});
 
-		auto network_registry_tags = std::move(m_NetworkRegistryTags).Build(generation, *network_registries);
-		if (!network_registry_tags) return std::unexpected(TranslateNetworkTagBuildError(network_registry_tags.error()));
+		auto static_registries = std::move(m_StaticRegistries).Build(generation);
+		if (!static_registries)
+			return std::unexpected(RegistrySnapshotError{
+				.Code = RegistrySnapshotErrorCode::InvalidGeneration,
+			});
+
+		auto network_tags =
+			std::move(m_NetworkRegistryTags).Build(generation, *network_registries);
+		if (!network_tags)
+			return std::unexpected(TranslateNetworkTagBuildError(network_tags.error()));
+
+		auto static_tags =
+			std::move(m_StaticRegistryTags).Build(generation, *static_registries);
+		if (!static_tags)
+			return std::unexpected(TranslateStaticTagBuildError(static_tags.error()));
 
 		return std::shared_ptr<const RegistrySnapshot>{
 			new RegistrySnapshot{
@@ -261,7 +347,9 @@ namespace Aurore::Util {
 				std::move(*biome_tags),
 				std::move(*dimension_type_tags),
 				std::move(*network_registries),
-				std::move(*network_registry_tags),
+				std::move(*network_tags),
+				std::move(*static_registries),
+				std::move(*static_tags),
 			}
 		};
 	}

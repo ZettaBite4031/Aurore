@@ -28,6 +28,7 @@ namespace {
 	enum class StaticRegistryKind : std::uint8_t {
 		Block,
 		Item,
+		Generic,
 	};
 
 	struct StaticRegistryDescriptor final {
@@ -41,14 +42,13 @@ namespace {
 	};
 
 	constexpr StaticRegistryDescriptor StaticRegistries[]{
-		{
-			.Key = "minecraft:block",
-			.Kind = StaticRegistryKind::Block,
-		},
-		{
-			.Key = "minecraft:item",
-			.Kind = StaticRegistryKind::Item,
-		},
+		{ "minecraft:block", StaticRegistryKind::Block },
+		{ "minecraft:item", StaticRegistryKind::Item },
+		{ "minecraft:entity_type", StaticRegistryKind::Generic },
+		{ "minecraft:fluid", StaticRegistryKind::Generic },
+		{ "minecraft:game_event", StaticRegistryKind::Generic },
+		{ "minecraft:point_of_interest_type", StaticRegistryKind::Generic },
+		{ "minecraft:potion", StaticRegistryKind::Generic },
 	};
 
 	[[nodiscard]] VanillaDataImportError MakeReportError(VanillaDataImportErrorCode code, const MinecraftDataCorpus& corpus, RegistryGeneration generation, std::string field = {}, std::string detail = {}) {
@@ -60,6 +60,7 @@ namespace {
 	}
 
 	[[nodiscard]] std::expected<Sonnet::value, VanillaDataImportError> ReadRegistryReport(const MinecraftDataCorpus& corpus, RegistryGeneration generation) {
+
 		std::error_code error;
 		const auto size = std::filesystem::file_size(corpus.RegistryReport, error);
 		if (error) {
@@ -98,17 +99,17 @@ namespace {
 	}
 
 	[[nodiscard]] std::expected<RegistryRuntimeId, VanillaDataImportError> ReadProtocolId(const Sonnet::value& entry, std::string_view registry_key, std::string_view entry_key, const MinecraftDataCorpus& corpus, RegistryGeneration generation) {
+		const std::string field = std::string{ registry_key } + ".entries." + std::string{ entry_key } + ".protocol_id";
 		if (!entry.is_object())
-			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::InvalidFieldType, corpus, generation, std::string{ registry_key } + ".entries." + std::string{ entry_key },
+			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::InvalidFieldType, corpus, generation, field,
 				"registry entry must be a JSON object"));
 
 		const auto* protocol_id = Aurore::Data::Detail::FindField(entry, "protocol_id");
 		if (protocol_id == nullptr)
-			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::MissingField, corpus, generation,
-				std::string{ registry_key } + ".entries." + std::string{ entry_key } + ".protocol_id"));
+			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::MissingField, corpus, generation, field));
 
 		if (!protocol_id->is_number())
-			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::InvalidFieldType, corpus, generation, std::string{ registry_key } + ".entries." + std::string{ entry_key } + ".protocol_id",
+			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::InvalidFieldType, corpus, generation, field,
 				"protocol_id must be a JSON number"));
 
 		const double number = protocol_id->as_number();
@@ -116,7 +117,7 @@ namespace {
 			|| std::trunc(number) != number
 			|| number < 0.0
 			|| number > static_cast<double>(std::numeric_limits<RegistryRuntimeId>::max()))
-			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::InvalidFieldValue, corpus, generation, std::string{ registry_key } + ".entries." + std::string{ entry_key } + ".protocol_id",
+			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::InvalidFieldValue, corpus, generation, field,
 				"protocol_id must be a non-negative registry runtime ID"));
 
 		return static_cast<RegistryRuntimeId>(number);
@@ -155,10 +156,7 @@ namespace {
 			auto protocol_id = ReadProtocolId(value, descriptor.Key, entry_name, corpus, generation);
 			if (!protocol_id) return std::unexpected(protocol_id.error());
 
-			result.push_back(StaticRegistryEntry{
-				.Key = std::move(*key),
-				.ProtocolId = *protocol_id,
-				});
+			result.push_back(StaticRegistryEntry{ .Key = std::move(*key), .ProtocolId = *protocol_id, });
 		}
 
 		if (result.empty())
@@ -167,39 +165,69 @@ namespace {
 
 		std::ranges::sort(result, [](const StaticRegistryEntry& lhs, const StaticRegistryEntry& rhs) {
 			return lhs.ProtocolId < rhs.ProtocolId;
-			});
+		});
 
 		for (std::size_t index{ 0 }; index < result.size(); ++index) {
 			if (result[index].ProtocolId == index) continue;
 
-			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::InvalidFieldValue, corpus, generation, std::string{ descriptor.Key } + ".entries." + result[index].Key.ToString() + ".protocol_id",
+			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::InvalidFieldValue, corpus, generation,
+				std::string{ descriptor.Key } + ".entries." + result[index].Key.ToString() + ".protocol_id",
 				"protocol IDs must form a contiguous zero-based sequence"));
 		}
 
 		return result;
 	}
 
-	[[nodiscard]] std::expected<void, VanillaDataImportError> DeclareStaticRegistry(const StaticRegistryDescriptor& descriptor, std::vector<StaticRegistryEntry> entries, const MinecraftDataCorpus& corpus, RegistryGeneration generation, RegistrySnapshotBuilder& builder) {
+	[[nodiscard]] std::expected<void, VanillaDataImportError> DeclareTypedStaticRegistry(const StaticRegistryDescriptor& descriptor, std::vector<StaticRegistryEntry> entries, const MinecraftDataCorpus& corpus, RegistryGeneration generation, RegistrySnapshotBuilder& builder) {
 		for (auto& entry : entries) {
 			std::expected<void, Aurore::Util::RegistryDeclarationError> declaration;
 
-			switch (descriptor.Kind) {
-			case StaticRegistryKind::Block:
+			if (descriptor.Kind == StaticRegistryKind::Block)
 				declaration = builder.Blocks().Declare(entry.Key, BlockDefinition{});
-				break;
-
-			case StaticRegistryKind::Item:
-				declaration = builder.Items().Declare(entry.Key, ItemDefinition{});
-				break;
-			}
-
+			else declaration = builder.Items().Declare(entry.Key, ItemDefinition{});
 			if (declaration) continue;
 
 			auto error = MakeReportError(VanillaDataImportErrorCode::RegistryDeclarationFailed, corpus, generation,
 				std::string{ descriptor.Key } + ".entries." + entry.Key.ToString());
-
 			error.Key = entry.Key;
 			error.DeclarationError = declaration.error();
+			return std::unexpected(std::move(error));
+		}
+
+		return {};
+	}
+
+	[[nodiscard]] std::expected<void, VanillaDataImportError> DeclareGenericStaticRegistry(const StaticRegistryDescriptor& descriptor, std::vector<StaticRegistryEntry> entries, const MinecraftDataCorpus& corpus, RegistryGeneration generation, RegistrySnapshotBuilder& builder) {
+		auto registry_key = ResourceLocation::Parse(descriptor.Key);
+		if (!registry_key)
+			return std::unexpected(MakeReportError(VanillaDataImportErrorCode::InvalidResourceLocation, corpus, generation, std::string{ descriptor.Key },
+				"built-in static registry descriptor contains an invalid key"));
+
+		auto registry = builder.StaticRegistries().CreateRegistryBuilder(*registry_key);
+		for (auto& entry : entries) {
+			const auto declaration = registry.Declare(entry.Key);
+			if (declaration) continue;
+
+			auto error = MakeReportError(VanillaDataImportErrorCode::RegistryDeclarationFailed, corpus, generation,
+				std::string{ descriptor.Key } + ".entries." + entry.Key.ToString());
+			error.Key = entry.Key;
+			error.DeclarationError = declaration.error();
+			return std::unexpected(std::move(error));
+		}
+
+		auto built = std::move(registry).Build();
+		if (!built) {
+			auto error = MakeReportError(VanillaDataImportErrorCode::StaticRegistryBuildFailed, corpus, generation, std::string{ descriptor.Key });
+			error.Key = *registry_key;
+			error.StaticRegistryBuildError = built.error();
+			return std::unexpected(std::move(error));
+		}
+
+		const auto collection = builder.StaticRegistries().Declare(std::move(*built));
+		if (!collection) {
+			auto error = MakeReportError(VanillaDataImportErrorCode::StaticRegistryCollectionDeclarationFailed, corpus, generation, std::string{ descriptor.Key });
+			error.Key = *registry_key;
+			error.StaticRegistryCollectionError = collection.error();
 			return std::unexpected(std::move(error));
 		}
 
@@ -216,7 +244,10 @@ namespace Aurore::Data::Detail {
 			auto entries = ReadStaticRegistryEntries(*report, descriptor, corpus, generation);
 			if (!entries) return std::unexpected(entries.error());
 
-			const auto declaration = DeclareStaticRegistry(descriptor, std::move(*entries), corpus, generation, builder);
+			std::expected<void, VanillaDataImportError> declaration;
+			if (descriptor.Kind == StaticRegistryKind::Generic)
+				declaration = DeclareGenericStaticRegistry(descriptor, std::move(*entries), corpus, generation, builder);
+			else declaration = DeclareTypedStaticRegistry(descriptor, std::move(*entries), corpus, generation, builder);
 			if (!declaration) return std::unexpected(declaration.error());
 		}
 

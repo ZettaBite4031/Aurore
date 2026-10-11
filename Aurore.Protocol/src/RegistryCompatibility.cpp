@@ -9,6 +9,7 @@
 namespace {
 	using Aurore::Protocol::Packets::Configuration::KnownPack;
 	using Aurore::Protocol::RegistryCompatibilityEvidence;
+	using Aurore::Protocol::RegistryCompatibilityInventoryEntry;
 	using Aurore::Protocol::RegistryCompatibilityManifest;
 	using Aurore::Protocol::RegistryCompatibilityRule;
 	using Aurore::Protocol::RegistryEntryDataPolicy;
@@ -18,7 +19,6 @@ namespace {
 	using Aurore::Protocol::RegistryPresence;
 	using Aurore::Protocol::RegistryRepresentation;
 	using Aurore::Protocol::RegistryTagPolicy;
-	using Aurore::Protocol::RegistryCompatibilityInventoryEntry;
 	using Aurore::Util::ResourceLocation;
 
 	struct RawRegistryRule final {
@@ -37,14 +37,18 @@ namespace {
 	};
 
 	/*
-		This table contains only contracts exposed by the first recorded
-		vanilla-client validation. It is intentionally provisional.
+		Minecraft 1.21.11 synchronizes twenty-three registries during
+		Configuration. The manifest also includes the seven static
+		registries whose vanilla tag sections are non-empty. Block and
+		item use typed identity registries; the remaining five use the
+		generic StaticIdentity representation.
 
-		Block and item are represented because Aurore currently transmits
-		their tag sections, not because their Registry Data contents are
-		transmitted.
+		The registry set and source codecs are now protocol-contract
+		evidence. Tag requirements, dependencies, and Known Pack behavior
+		remain provisional until the corresponding importer work is
+		validated end to end.
 	*/
-	constexpr std::array Protocol774InitialRules{
+	constexpr std::array Protocol774Rules{
 		RawRegistryRule{
 			.Key = "minecraft:block",
 			.Presence = RegistryPresence::Optional,
@@ -73,10 +77,10 @@ namespace {
 			.EntryData = RegistryEntryDataPolicy::Required,
 			.Tags = RegistryTagPolicy::Optional,
 			.Representation = RegistryRepresentation::TypedDomain,
-			.Evidence = RegistryCompatibilityEvidence::VanillaObservation,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
 			.MinimumEntries = 1,
 			.SchemaContract = "minecraft:dimension_type@1.21.11",
-			.SourceCodec = "minecraft:dimension_type",
+			.SourceCodec = "DimensionType.NETWORK_CODEC",
 		},
 		RawRegistryRule{
 			.Key = "minecraft:worldgen/biome",
@@ -84,10 +88,10 @@ namespace {
 			.EntryData = RegistryEntryDataPolicy::Required,
 			.Tags = RegistryTagPolicy::Optional,
 			.Representation = RegistryRepresentation::TypedDomain,
-			.Evidence = RegistryCompatibilityEvidence::VanillaObservation,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
 			.MinimumEntries = 1,
 			.SchemaContract = "minecraft:worldgen/biome@1.21.11",
-			.SourceCodec = "minecraft:worldgen/biome",
+			.SourceCodec = "Biome.NETWORK_CODEC",
 		},
 		RawRegistryRule{
 			.Key = "minecraft:cat_variant",
@@ -95,10 +99,10 @@ namespace {
 			.EntryData = RegistryEntryDataPolicy::Required,
 			.Tags = RegistryTagPolicy::Optional,
 			.Representation = RegistryRepresentation::GenericNetwork,
-			.Evidence = RegistryCompatibilityEvidence::VanillaObservation,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
 			.MinimumEntries = 1,
 			.SchemaContract = "minecraft:cat_variant@1.21.11",
-			.SourceCodec = "minecraft:cat_variant",
+			.SourceCodec = "CatVariant.NETWORK_CODEC",
 		},
 		RawRegistryRule{
 			.Key = "minecraft:chicken_variant",
@@ -106,10 +110,10 @@ namespace {
 			.EntryData = RegistryEntryDataPolicy::Required,
 			.Tags = RegistryTagPolicy::Optional,
 			.Representation = RegistryRepresentation::GenericNetwork,
-			.Evidence = RegistryCompatibilityEvidence::VanillaObservation,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
 			.MinimumEntries = 1,
 			.SchemaContract = "minecraft:chicken_variant@1.21.11",
-			.SourceCodec = "minecraft:chicken_variant",
+			.SourceCodec = "ChickenVariant.NETWORK_CODEC",
 		},
 		RawRegistryRule{
 			.Key = "minecraft:cow_variant",
@@ -117,10 +121,10 @@ namespace {
 			.EntryData = RegistryEntryDataPolicy::Required,
 			.Tags = RegistryTagPolicy::Optional,
 			.Representation = RegistryRepresentation::GenericNetwork,
-			.Evidence = RegistryCompatibilityEvidence::VanillaObservation,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
 			.MinimumEntries = 1,
 			.SchemaContract = "minecraft:cow_variant@1.21.11",
-			.SourceCodec = "minecraft:cow_variant",
+			.SourceCodec = "CowVariant.NETWORK_CODEC",
 		},
 		RawRegistryRule{
 			.Key = "minecraft:frog_variant",
@@ -128,10 +132,10 @@ namespace {
 			.EntryData = RegistryEntryDataPolicy::Required,
 			.Tags = RegistryTagPolicy::Optional,
 			.Representation = RegistryRepresentation::GenericNetwork,
-			.Evidence = RegistryCompatibilityEvidence::VanillaObservation,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
 			.MinimumEntries = 1,
 			.SchemaContract = "minecraft:frog_variant@1.21.11",
-			.SourceCodec = "minecraft:frog_variant",
+			.SourceCodec = "FrogVariant.NETWORK_CODEC",
 		},
 		RawRegistryRule{
 			.Key = "minecraft:painting_variant",
@@ -139,10 +143,10 @@ namespace {
 			.EntryData = RegistryEntryDataPolicy::Required,
 			.Tags = RegistryTagPolicy::Optional,
 			.Representation = RegistryRepresentation::GenericNetwork,
-			.Evidence = RegistryCompatibilityEvidence::VanillaObservation,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
 			.MinimumEntries = 1,
 			.SchemaContract = "minecraft:painting_variant@1.21.11",
-			.SourceCodec = "minecraft:painting_variant",
+			.SourceCodec = "PaintingVariant.DIRECT_CODEC",
 		},
 		RawRegistryRule{
 			.Key = "minecraft:pig_variant",
@@ -150,10 +154,10 @@ namespace {
 			.EntryData = RegistryEntryDataPolicy::Required,
 			.Tags = RegistryTagPolicy::Optional,
 			.Representation = RegistryRepresentation::GenericNetwork,
-			.Evidence = RegistryCompatibilityEvidence::VanillaObservation,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
 			.MinimumEntries = 1,
 			.SchemaContract = "minecraft:pig_variant@1.21.11",
-			.SourceCodec = "minecraft:pig_variant",
+			.SourceCodec = "PigVariant.NETWORK_CODEC",
 		},
 		RawRegistryRule{
 			.Key = "minecraft:wolf_sound_variant",
@@ -161,10 +165,10 @@ namespace {
 			.EntryData = RegistryEntryDataPolicy::Required,
 			.Tags = RegistryTagPolicy::Optional,
 			.Representation = RegistryRepresentation::GenericNetwork,
-			.Evidence = RegistryCompatibilityEvidence::VanillaObservation,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
 			.MinimumEntries = 1,
 			.SchemaContract = "minecraft:wolf_sound_variant@1.21.11",
-			.SourceCodec = "minecraft:wolf_sound_variant",
+			.SourceCodec = "WolfSoundVariant.NETWORK_CODEC",
 		},
 		RawRegistryRule{
 			.Key = "minecraft:wolf_variant",
@@ -172,10 +176,10 @@ namespace {
 			.EntryData = RegistryEntryDataPolicy::Required,
 			.Tags = RegistryTagPolicy::Optional,
 			.Representation = RegistryRepresentation::GenericNetwork,
-			.Evidence = RegistryCompatibilityEvidence::VanillaObservation,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
 			.MinimumEntries = 1,
 			.SchemaContract = "minecraft:wolf_variant@1.21.11",
-			.SourceCodec = "minecraft:wolf_variant",
+			.SourceCodec = "WolfVariant.NETWORK_CODEC",
 		},
 		RawRegistryRule{
 			.Key = "minecraft:zombie_nautilus_variant",
@@ -320,6 +324,61 @@ namespace {
 			.SchemaContract = "minecraft:timeline@1.21.11",
 			.SourceCodec = "Timeline.NETWORK_CODEC",
 		},
+		RawRegistryRule{
+			.Key = "minecraft:entity_type",
+			.Presence = RegistryPresence::Optional,
+			.EntryData = RegistryEntryDataPolicy::Forbidden,
+			.Tags = RegistryTagPolicy::Optional,
+			.Representation = RegistryRepresentation::StaticIdentity,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
+			.MinimumEntries = 0,
+			.SchemaContract = {},
+			.SourceCodec = {},
+		},
+		RawRegistryRule{
+			.Key = "minecraft:fluid",
+			.Presence = RegistryPresence::Optional,
+			.EntryData = RegistryEntryDataPolicy::Forbidden,
+			.Tags = RegistryTagPolicy::Optional,
+			.Representation = RegistryRepresentation::StaticIdentity,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
+			.MinimumEntries = 0,
+			.SchemaContract = {},
+			.SourceCodec = {},
+		},
+		RawRegistryRule{
+			.Key = "minecraft:game_event",
+			.Presence = RegistryPresence::Optional,
+			.EntryData = RegistryEntryDataPolicy::Forbidden,
+			.Tags = RegistryTagPolicy::Optional,
+			.Representation = RegistryRepresentation::StaticIdentity,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
+			.MinimumEntries = 0,
+			.SchemaContract = {},
+			.SourceCodec = {},
+		},
+		RawRegistryRule{
+			.Key = "minecraft:point_of_interest_type",
+			.Presence = RegistryPresence::Optional,
+			.EntryData = RegistryEntryDataPolicy::Forbidden,
+			.Tags = RegistryTagPolicy::Optional,
+			.Representation = RegistryRepresentation::StaticIdentity,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
+			.MinimumEntries = 0,
+			.SchemaContract = {},
+			.SourceCodec = {},
+		},
+		RawRegistryRule{
+			.Key = "minecraft:potion",
+			.Presence = RegistryPresence::Optional,
+			.EntryData = RegistryEntryDataPolicy::Forbidden,
+			.Tags = RegistryTagPolicy::Optional,
+			.Representation = RegistryRepresentation::StaticIdentity,
+			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
+			.MinimumEntries = 0,
+			.SchemaContract = {},
+			.SourceCodec = {},
+		},
 	};
 
 	[[nodiscard]] bool IsKnownPackSelected(const KnownPack& pack, std::span<const KnownPack> selected_packs) {
@@ -430,6 +489,20 @@ namespace {
 			.Key = registry.GetKey(),
 			.EntryCount = registry.Size(),
 			.EntriesWithData = registry.GetEntriesWithDataCount(),
+			.TagCount = tags == nullptr ? 0 : tags->Size(),
+		};
+	}
+
+	[[nodiscard]] RegistryCompatibilityInventoryEntry BuildStaticInventoryEntry(
+		const Aurore::Util::StaticRegistry& registry,
+		const Aurore::Util::RegistrySnapshot& snapshot) {
+
+		const auto* tags = snapshot.GetStaticRegistryTags().Find(registry.GetKey());
+
+		return RegistryCompatibilityInventoryEntry{
+			.Key = registry.GetKey(),
+			.EntryCount = 0,
+			.EntriesWithData = 0,
 			.TagCount = tags == nullptr ? 0 : tags->Size(),
 		};
 	}
@@ -694,9 +767,9 @@ namespace Aurore::Protocol {
 
 	std::expected<RegistryCompatibilityManifest, RegistryManifestError> Protocol774RegistryManifest::Build() {
 		std::vector<RegistryCompatibilityRule> rules;
-		rules.reserve(Protocol774InitialRules.size());
-		for (std::size_t index{ 0 }; index < Protocol774InitialRules.size(); index++) {
-			const auto& raw = Protocol774InitialRules[index];
+		rules.reserve(Protocol774Rules.size());
+		for (std::size_t index{ 0 }; index < Protocol774Rules.size(); index++) {
+			const auto& raw = Protocol774Rules[index];
 			auto key = Aurore::Util::ResourceLocation::Parse(raw.Key);
 			if (!key)
 				return std::unexpected(RegistryManifestError{
@@ -730,56 +803,84 @@ namespace Aurore::Protocol {
 
 	std::expected<std::vector<RegistryCompatibilityInventoryEntry>, RegistrySnapshotInventoryError> RegistrySnapshotInventoryAdapter::Build(const RegistryCompatibilityManifest& manifest, const Aurore::Util::RegistrySnapshot& snapshot) {
 		std::vector<RegistryCompatibilityInventoryEntry> inventory;
-		inventory.reserve(manifest.GetRules().size() + snapshot.GetNetworkRegistries().Size() + TypedRegistryDescriptors.size());
+		inventory.reserve(manifest.GetRules().size() + snapshot.GetNetworkRegistries().Size() + snapshot.GetStaticRegistries().Size() + TypedRegistryDescriptors.size());
+
 		const auto rules = manifest.GetRules();
 		for (std::size_t i{ 0 }; i < rules.size(); i++) {
 			const auto& rule = rules[i];
 			const auto typed_source = FindTypedRegistrySource(rule.Key);
-			if (rule.Representation == RegistryRepresentation::TypedDomain) {
+			const auto* network_registry = snapshot.GetNetworkRegistries().Find(rule.Key);
+			const auto* static_registry = snapshot.GetStaticRegistries().Find(rule.Key);
+
+			switch (rule.Representation) {
+			case RegistryRepresentation::TypedDomain:
 				if (!typed_source) {
-					const bool exists_as_generic = snapshot.GetNetworkRegistries().Contains(rule.Key);
+					std::optional<RegistryRepresentation> observed;
+					if (network_registry) observed = RegistryRepresentation::GenericNetwork;
+					else if (static_registry) observed = RegistryRepresentation::StaticIdentity;
+
 					return std::unexpected(RegistrySnapshotInventoryError{
-						.Code = exists_as_generic
-								? RegistrySnapshotInventoryErrorCode::RepresentationMismatch
-								: RegistrySnapshotInventoryErrorCode::UnsupportedTypedRegistry,
+						.Code = observed
+							? RegistrySnapshotInventoryErrorCode::RepresentationMismatch
+							: RegistrySnapshotInventoryErrorCode::UnsupportedTypedRegistry,
 						.Key = rule.Key,
 						.RuleIndex = i,
 						.ExpectedRepresentation = RegistryRepresentation::TypedDomain,
-						.ObservedRepresentation = exists_as_generic
-								? std::optional{RegistryRepresentation::GenericNetwork}
-								: std::nullopt,
+						.ObservedRepresentation = observed,
 					});
 				}
 
 				inventory.push_back(BuildTypedInventoryEntry(*typed_source, snapshot));
-				continue;
+				break;
+
+			case RegistryRepresentation::GenericNetwork:
+				if (typed_source)
+					return std::unexpected(RegistrySnapshotInventoryError{
+						.Code = RegistrySnapshotInventoryErrorCode::RepresentationMismatch,
+						.Key = rule.Key,
+						.RuleIndex = i,
+						.ExpectedRepresentation = RegistryRepresentation::GenericNetwork,
+						.ObservedRepresentation = RegistryRepresentation::TypedDomain,
+					});
+
+				if (static_registry)
+					return std::unexpected(RegistrySnapshotInventoryError{
+						.Code = RegistrySnapshotInventoryErrorCode::RepresentationMismatch,
+						.Key = rule.Key,
+						.RuleIndex = i,
+						.ExpectedRepresentation = RegistryRepresentation::GenericNetwork,
+						.ObservedRepresentation = RegistryRepresentation::StaticIdentity,
+					});
+
+				if (network_registry)
+					inventory.push_back(BuildGenericInventoryEntry(*network_registry, snapshot));
+				break;
+
+			case RegistryRepresentation::StaticIdentity:
+				if (typed_source)
+					return std::unexpected(RegistrySnapshotInventoryError{
+						.Code = RegistrySnapshotInventoryErrorCode::RepresentationMismatch,
+						.Key = rule.Key,
+						.RuleIndex = i,
+						.ExpectedRepresentation = RegistryRepresentation::StaticIdentity,
+						.ObservedRepresentation = RegistryRepresentation::TypedDomain,
+					});
+
+				if (network_registry)
+					return std::unexpected(RegistrySnapshotInventoryError{
+						.Code = RegistrySnapshotInventoryErrorCode::RepresentationMismatch,
+						.Key = rule.Key,
+						.RuleIndex = i,
+						.ExpectedRepresentation = RegistryRepresentation::StaticIdentity,
+						.ObservedRepresentation = RegistryRepresentation::GenericNetwork,
+					});
+
+				if (static_registry)
+					inventory.push_back(BuildStaticInventoryEntry(*static_registry, snapshot));
+				break;
 			}
-
-			if (typed_source)
-				return std::unexpected(RegistrySnapshotInventoryError{
-					.Code = RegistrySnapshotInventoryErrorCode::RepresentationMismatch,
-					.Key = rule.Key,
-					.RuleIndex = i,
-					.ExpectedRepresentation = RegistryRepresentation::GenericNetwork,
-					.ObservedRepresentation = RegistryRepresentation::TypedDomain,
-				});
-
-			const auto* registry = snapshot.GetNetworkRegistries().Find(rule.Key);
-
-			/*
-				An absent generic registry is deliberately omitted.
-				RegistryCompatibilityValidator determines whether
-				the absence violates Required or dependency policy.
-			*/
-			if (registry == nullptr) continue;
-			inventory.push_back(BuildGenericInventoryEntry(*registry, snapshot));
 		}
 
-		/*
-			Include typed Configuration sections not classified by
-			the manifest. This allows a Complete manifest to reject
-			them as unexpected rather than silently dropping them.
-		*/
 		for (const auto& descriptor : TypedRegistryDescriptors) {
 			const auto& key = TypedRegistryKey(descriptor.Source);
 			if (manifest.Find(key) != nullptr) continue;
@@ -789,15 +890,14 @@ namespace Aurore::Protocol {
 				inventory.push_back(std::move(entry));
 		}
 
-		/*
-			A provisional manifest may not yet classify every generic
-			registry. Retain those registries in snapshot order so the
-			validator can permit or reject them according to manifest
-			completeness.
-		*/
 		for (const auto& registry : snapshot.GetNetworkRegistries().GetRegistries()) {
 			if (manifest.Find(registry.GetKey()) != nullptr) continue;
 			inventory.push_back(BuildGenericInventoryEntry(registry, snapshot));
+		}
+
+		for (const auto& registry : snapshot.GetStaticRegistries().GetRegistries()) {
+			if (manifest.Find(registry.GetKey()) != nullptr) continue;
+			inventory.push_back(BuildStaticInventoryEntry(registry, snapshot));
 		}
 
 		return inventory;

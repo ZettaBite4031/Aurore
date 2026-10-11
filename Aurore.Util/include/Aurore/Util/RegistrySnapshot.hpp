@@ -1,9 +1,10 @@
 #pragma once
 
 #include "Nbt.hpp"
+#include "NetworkRegistry.hpp"
 #include "Registry.hpp"
 #include "RegistryTag.hpp"
-#include "NetworkRegistry.hpp"
+#include "StaticRegistry.hpp"
 
 #include <compare>
 #include <concepts>
@@ -83,6 +84,9 @@ namespace Aurore::Util {
 
 		NetworkRegistryCollectionLimits NetworkRegistries{};
 		NetworkRegistryTagCollectionLimits NetworkRegistryTags{};
+
+		StaticRegistryCollectionLimits StaticRegistries{};
+		StaticRegistryTagCollectionLimits StaticRegistryTags{};
 	};
 
 	enum class RegistryKind : std::uint8_t {
@@ -123,6 +127,8 @@ namespace Aurore::Util {
 		[[nodiscard]] const DimensionTypeTagDeclarationView& GetDimensionTypeTags() const noexcept { return *m_DimensionTypeTags; }
 		[[nodiscard]] const NetworkRegistryCollectionBuilder& GetNetworkRegistries() const noexcept { return *m_NetworkRegistries; }
 		[[nodiscard]] const NetworkRegistryTagCollectionBuilder& GetNetworkRegistryTags() const noexcept { return *m_NetworkRegistryTags; }
+		[[nodiscard]] const StaticRegistryCollectionBuilder& GetStaticRegistries() const noexcept { return *m_StaticRegistries; }
+		[[nodiscard]] const StaticRegistryTagCollectionBuilder& GetStaticRegistryTags() const noexcept { return *m_StaticRegistryTags; }
 
 	private:
 		RegistrySnapshotDeclarationView(
@@ -135,7 +141,9 @@ namespace Aurore::Util {
 			const BiomeTagDeclarationView& biome_tags,
 			const DimensionTypeTagDeclarationView& dimension_type_tags,
 			const NetworkRegistryCollectionBuilder& network_registries,
-			const NetworkRegistryTagCollectionBuilder& network_registry_tags) noexcept
+			const NetworkRegistryTagCollectionBuilder& network_registry_tags,
+			const StaticRegistryCollectionBuilder& static_registries,
+			const StaticRegistryTagCollectionBuilder& static_registry_tags) noexcept
 			: m_Blocks(&blocks),
 			m_Items(&items),
 			m_Biomes(&biomes),
@@ -145,7 +153,9 @@ namespace Aurore::Util {
 			m_BiomeTags(&biome_tags),
 			m_DimensionTypeTags(&dimension_type_tags),
 			m_NetworkRegistries(&network_registries),
-			m_NetworkRegistryTags(&network_registry_tags) {}
+			m_NetworkRegistryTags(&network_registry_tags),
+			m_StaticRegistries(&static_registries),
+			m_StaticRegistryTags(&static_registry_tags) {}
 
 		const BlockRegistryDeclarationView* m_Blocks;
 		const ItemRegistryDeclarationView* m_Items;
@@ -157,6 +167,8 @@ namespace Aurore::Util {
 		const DimensionTypeTagDeclarationView* m_DimensionTypeTags;
 		const NetworkRegistryCollectionBuilder* m_NetworkRegistries;
 		const NetworkRegistryTagCollectionBuilder* m_NetworkRegistryTags;
+		const StaticRegistryCollectionBuilder* m_StaticRegistries;
+		const StaticRegistryTagCollectionBuilder* m_StaticRegistryTags;
 
 		friend class RegistrySnapshotBuilder;
 	};
@@ -179,6 +191,8 @@ namespace Aurore::Util {
 		[[nodiscard]] const DimensionTypeTagSet& GetDimensionTypeTags() const noexcept { return m_DimensionTypeTags; }
 		[[nodiscard]] const NetworkRegistryCollection& GetNetworkRegistries() const noexcept { return m_NetworkRegistries; }
 		[[nodiscard]] const NetworkRegistryTagCollection& GetNetworkRegistryTags() const noexcept { return m_NetworkRegistryTags; }
+		[[nodiscard]] const StaticRegistryCollection& GetStaticRegistries() const noexcept { return m_StaticRegistries; }
+		[[nodiscard]] const StaticRegistryTagCollection& GetStaticRegistryTags() const noexcept { return m_StaticRegistryTags; }
 
 	private:
 		RegistrySnapshot(
@@ -192,7 +206,9 @@ namespace Aurore::Util {
 			BiomeTagSet biome_tags,
 			DimensionTypeTagSet dimension_type_tags,
 			NetworkRegistryCollection network_registries,
-			NetworkRegistryTagCollection network_registry_tags) noexcept;
+			NetworkRegistryTagCollection network_registry_tags,
+			StaticRegistryCollection static_registries,
+			StaticRegistryTagCollection static_registry_tags) noexcept;
 
 		RegistryGeneration m_Generation;
 		BlockRegistry m_Blocks;
@@ -205,6 +221,8 @@ namespace Aurore::Util {
 		DimensionTypeTagSet m_DimensionTypeTags;
 		NetworkRegistryCollection m_NetworkRegistries;
 		NetworkRegistryTagCollection m_NetworkRegistryTags;
+		StaticRegistryCollection m_StaticRegistries;
+		StaticRegistryTagCollection m_StaticRegistryTags;
 
 		friend class RegistrySnapshotBuilder;
 	};
@@ -239,6 +257,10 @@ namespace Aurore::Util {
 		[[nodiscard]] const NetworkRegistryCollectionBuilder& NetworkRegistries() const noexcept { return m_NetworkRegistries; }
 		[[nodiscard]] NetworkRegistryTagCollectionBuilder& NetworkRegistryTags() noexcept { return m_NetworkRegistryTags; }
 		[[nodiscard]] const NetworkRegistryTagCollectionBuilder& NetworkRegistryTags() const noexcept { return m_NetworkRegistryTags; }
+		[[nodiscard]] StaticRegistryCollectionBuilder& StaticRegistries() noexcept { return m_StaticRegistries; }
+		[[nodiscard]] const StaticRegistryCollectionBuilder& StaticRegistries() const noexcept { return m_StaticRegistries; }
+		[[nodiscard]] StaticRegistryTagCollectionBuilder& StaticRegistryTags() noexcept { return m_StaticRegistryTags; }
+		[[nodiscard]] const StaticRegistryTagCollectionBuilder& StaticRegistryTags() const noexcept { return m_StaticRegistryTags; }
 
 		[[nodiscard]] std::expected<std::shared_ptr<const RegistrySnapshot>, RegistrySnapshotError> Build(RegistryGeneration generation)&&;
 
@@ -257,9 +279,18 @@ namespace Aurore::Util {
 			const auto dimension_type_tags = m_DimensionTypeTags.GetDeclarationView();
 
 			const RegistrySnapshotDeclarationView declarations{
-				blocks, items, biomes, dimension_types,
-				block_tags, item_tags, biome_tags, dimension_type_tags,
-				m_NetworkRegistries, m_NetworkRegistryTags
+				blocks,
+				items,
+				biomes,
+				dimension_types,
+				block_tags,
+				item_tags,
+				biome_tags,
+				dimension_type_tags,
+				m_NetworkRegistries,
+				m_NetworkRegistryTags,
+				m_StaticRegistries,
+				m_StaticRegistryTags,
 			};
 
 			return std::invoke(std::forward<Validator>(validator), declarations);
@@ -269,11 +300,14 @@ namespace Aurore::Util {
 		requires std::same_as<
 			std::invoke_result_t<Validator&, const RegistrySnapshotDeclarationView&>,
 			std::expected<void, RegistrySnapshotError>>
-		[[nodiscard]] std::expected<std::shared_ptr<const RegistrySnapshot>, RegistrySnapshotError> Build(RegistryGeneration generation, Validator&& validator)&& {
+		[[nodiscard]] std::expected<std::shared_ptr<const RegistrySnapshot>, RegistrySnapshotError> Build(
+			RegistryGeneration generation,
+			Validator&& validator)&& {
+
 			const auto generation_result = ValidateGeneration(generation);
 			if (!generation_result) return std::unexpected(generation_result.error());
 
-			const auto ownership_validation = ValidateNetworkRegistryOwnership();
+			const auto ownership_validation = ValidateRegistryOwnership();
 			if (!ownership_validation) return std::unexpected(ownership_validation.error());
 
 			const auto validation = Validate(std::forward<Validator>(validator));
@@ -289,20 +323,26 @@ namespace Aurore::Util {
 		[[nodiscard]] static std::expected<void, RegistrySnapshotError> ValidateGeneration(RegistryGeneration generation) noexcept;
 		[[nodiscard]] static RegistrySnapshotError TranslateBuildError(RegistryKind registry, const RegistryBuildError& error);
 		[[nodiscard]] static RegistrySnapshotError TranslateTagBuildError(RegistryKind registry, const RegistryTagBuildError& error);
-		[[nodiscard]] std::expected<void, RegistrySnapshotError> ValidateTags(RegistryGeneration generation) const;
-		[[nodiscard]] std::expected<std::shared_ptr<const RegistrySnapshot>, RegistrySnapshotError> Finalize(RegistryGeneration generation)&&;
-		[[nodiscard]] std::expected<void, RegistrySnapshotError> ValidateNetworkRegistryOwnership() const;
 		[[nodiscard]] static RegistrySnapshotError TranslateNetworkTagBuildError(const NetworkRegistryTagCollectionBuildError& error);
+		[[nodiscard]] static RegistrySnapshotError TranslateStaticTagBuildError(const StaticRegistryTagCollectionBuildError& error);
+		[[nodiscard]] std::expected<void, RegistrySnapshotError> ValidateTags(RegistryGeneration generation) const;
+		[[nodiscard]] std::expected<void, RegistrySnapshotError> ValidateRegistryOwnership() const;
+		[[nodiscard]] std::expected<std::shared_ptr<const RegistrySnapshot>, RegistrySnapshotError> Finalize(RegistryGeneration generation)&&;
 
 		BlockRegistryBuilder m_Blocks;
 		ItemRegistryBuilder m_Items;
 		BiomeRegistryBuilder m_Biomes;
 		DimensionTypeRegistryBuilder m_DimensionTypes;
+
 		BlockTagBuilder m_BlockTags;
 		ItemTagBuilder m_ItemTags;
 		BiomeTagBuilder m_BiomeTags;
 		DimensionTypeTagBuilder m_DimensionTypeTags;
+
 		NetworkRegistryCollectionBuilder m_NetworkRegistries;
 		NetworkRegistryTagCollectionBuilder m_NetworkRegistryTags;
+
+		StaticRegistryCollectionBuilder m_StaticRegistries;
+		StaticRegistryTagCollectionBuilder m_StaticRegistryTags;
 	};
 }

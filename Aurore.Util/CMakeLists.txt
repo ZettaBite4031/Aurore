@@ -8,6 +8,7 @@ add_library(
     src/NetworkRegistry.cpp
     src/RegistrySnapshot.cpp
     src/ResourceLocation.cpp
+    src/StaticRegistry.cpp
     src/Uuid.cpp
 
     include/Aurore/Util/ByteBuffer.hpp
@@ -18,6 +19,7 @@ add_library(
     include/Aurore/Util/RegistrySnapshot.hpp
     include/Aurore/Util/RegistryTag.hpp
     include/Aurore/Util/ResourceLocation.hpp
+    include/Aurore/Util/StaticRegistry.hpp
     include/Aurore/Util/UUID.hpp
 )
 

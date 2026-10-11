@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -30,9 +31,17 @@ namespace Aurore::Data::Detail {
 		const VanillaRegistrySourceEntry& Entry;
 	};
 
-	[[nodiscard]] VanillaDataImportError MakeImportError(VanillaDataImportErrorCode code, const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation, VanillaDataImportStage stage);
+	[[nodiscard]] VanillaDataImportError MakeImportError(
+		VanillaDataImportErrorCode code,
+		const MinecraftDataCorpus& corpus,
+		Aurore::Util::RegistryGeneration generation,
+		VanillaDataImportStage stage);
 
-	[[nodiscard]] VanillaDataImportError MakeEntryError(VanillaDataImportErrorCode code, const VanillaRegistryEntryContext& context, std::string field = {}, std::string detail = {});
+	[[nodiscard]] VanillaDataImportError MakeEntryError(
+		VanillaDataImportErrorCode code,
+		const VanillaRegistryEntryContext& context,
+		std::string field = {},
+		std::string detail = {});
 
 	[[nodiscard]] std::expected<std::vector<VanillaRegistrySourceEntry>, VanillaDataImportError> DiscoverRegistryEntries(const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation, VanillaDataImportStage stage, const std::filesystem::path& relative_root);
 
@@ -67,6 +76,8 @@ namespace Aurore::Data::Detail {
 	[[nodiscard]] std::expected<void, VanillaDataImportError> ImportDimensionTypes(const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation, Aurore::Util::RegistrySnapshotBuilder& builder);
 
 	[[nodiscard]] std::expected<void, VanillaDataImportError> ImportBiomes(const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation, Aurore::Util::RegistrySnapshotBuilder& builder);
+
+	[[nodiscard]] std::expected<void, VanillaDataImportError> ImportTags(const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation, Aurore::Util::RegistrySnapshotBuilder& builder);
 
 	[[nodiscard]] std::expected<void, VanillaDataImportError> ImportNetworkRegistries(const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation, Aurore::Util::RegistrySnapshotBuilder& builder);
 }
