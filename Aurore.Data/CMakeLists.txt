@@ -11,7 +11,10 @@ set(
     src/MojangMetadata.cpp
     src/OfficialMinecraftSource.cpp
     src/Sha1.cpp
+    src/VanillaBiomeImporter.cpp
     src/VanillaDataImporter.cpp
+    src/VanillaDataImportSupport.cpp
+    src/VanillaDimensionTypeImporter.cpp
 
     include/Aurore/Data/DataPreparation.hpp
     include/Aurore/Data/DataPreparationService.hpp
@@ -27,6 +30,7 @@ set(
     src/OfficialMinecraftSource.hpp
     src/Process.hpp
     src/Sha1.hpp
+    src/VanillaDataImportSupport.hpp
 )
 
 if(AURORE_PLATFORM_WINDOWS)

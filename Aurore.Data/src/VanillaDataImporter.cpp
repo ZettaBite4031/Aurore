@@ -1,5 +1,7 @@
 #include <Aurore/Data/VanillaDataImporter.hpp>
 
+#include "VanillaDataImportSupport.hpp"
+
 #include <string_view>
 #include <utility>
 
@@ -12,31 +14,32 @@ namespace {
 
 	constexpr std::string_view SupportedMinecraftVersion{ "1.21.11" };
 	constexpr std::int32_t SupportedProtocolVersion{ 774 };
-
-	[[nodiscard]] VanillaDataImportError MakeError(VanillaDataImportErrorCode code, const MinecraftDataCorpus& corpus, RegistryGeneration generation, std::optional<RegistrySnapshotError> snapshot_error = std::nullopt) {
-		return VanillaDataImportError{
-			.Code = code,
-			.MinecraftVersion = corpus.Version.Id,
-			.ProtocolVersion = corpus.Version.ProtocolVersion,
-			.Generation = generation,
-			.SnapshotError = std::move(snapshot_error),
-		};
-	}
 }
 
 namespace Aurore::Data {
 	std::expected<std::shared_ptr<const Aurore::Util::RegistrySnapshot>, VanillaDataImportError> VanillaDataImporter::Import(const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation) {
 		if (corpus.Version.Id != SupportedMinecraftVersion)
-			return std::unexpected(MakeError(VanillaDataImportErrorCode::UnsupportedMinecraftVersion, corpus, generation));
+			return std::unexpected(Detail::MakeImportError(VanillaDataImportErrorCode::UnsupportedMinecraftVersion, corpus, generation, VanillaDataImportStage::TargetValidation));
 		if (corpus.Version.ProtocolVersion != SupportedProtocolVersion)
-			return std::unexpected(MakeError(VanillaDataImportErrorCode::UnsupportedProtocolVersion, corpus, generation));
+			return std::unexpected(Detail::MakeImportError(VanillaDataImportErrorCode::UnsupportedProtocolVersion, corpus, generation, VanillaDataImportStage::TargetValidation));
 		if (generation == Aurore::Util::NoRegistryGeneration)
-			return std::unexpected(MakeError(VanillaDataImportErrorCode::InvalidGeneration, corpus, generation));
+			return std::unexpected(Detail::MakeImportError(VanillaDataImportErrorCode::InvalidGeneration, corpus, generation, VanillaDataImportStage::TargetValidation));
 
 		Aurore::Util::RegistrySnapshotBuilder builder;
+
+		const auto dimension_types = Detail::ImportDimensionTypes(corpus, generation, builder);
+		if (!dimension_types) return std::unexpected(dimension_types.error());
+
+		const auto biomes = Detail::ImportBiomes(corpus, generation, builder);
+		if (!biomes) return std::unexpected(biomes.error());
+
 		auto snapshot = std::move(builder).Build(generation);
-		if (!snapshot)
-			return std::unexpected(MakeError(VanillaDataImportErrorCode::SnapshotBuildFailed, corpus, generation, snapshot.error()));
+		if (!snapshot) {
+			auto error = Detail::MakeImportError(VanillaDataImportErrorCode::SnapshotBuildFailed, corpus, generation, VanillaDataImportStage::SnapshotBuild);
+			error.SnapshotError = snapshot.error();
+			return std::unexpected(std::move(error));
+		}
+
 		return std::move(*snapshot);
 	}
 }

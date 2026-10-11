@@ -6,23 +6,57 @@
 
 #include <cstdint>
 #include <expected>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
+#include <system_error>
 
 namespace Aurore::Data {
+	enum class VanillaDataImportStage : std::uint8_t {
+		TargetValidation,
+		DimensionTypes,
+		Biomes,
+		SnapshotBuild,
+	};
+
 	enum class VanillaDataImportErrorCode : std::uint8_t {
 		UnsupportedMinecraftVersion,
 		UnsupportedProtocolVersion,
 		InvalidGeneration,
+
+		MissingRegistrySource,
+		EmptyRegistrySource,
+		PathInspectionFailed,
+		SourceEntryTooLarge,
+		SourceReadFailed,
+
+		JsonParseFailed,
+		InvalidJsonRoot,
+		MissingField,
+		InvalidFieldType,
+		InvalidFieldValue,
+		InvalidResourceLocation,
+
+		RegistryDeclarationFailed,
 		SnapshotBuildFailed,
 	};
 
 	struct VanillaDataImportError final {
 		VanillaDataImportErrorCode Code;
+		VanillaDataImportStage Stage{ VanillaDataImportStage::TargetValidation };
+
 		std::string MinecraftVersion;
 		std::int32_t ProtocolVersion{ 0 };
 		Aurore::Util::RegistryGeneration Generation{ Aurore::Util::NoRegistryGeneration };
+
+		std::filesystem::path Path;
+		std::optional<Aurore::Util::ResourceLocation> Key;
+		std::string Field;
+		std::string Detail;
+		std::error_code SystemError;
+
+		std::optional<Aurore::Util::RegistryDeclarationError> DeclarationError;
 		std::optional<Aurore::Util::RegistrySnapshotError> SnapshotError;
 	};
 
