@@ -16,6 +16,8 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <array>
+#include <set>
 #include <memory>
 #include <span>
 #include <stdexcept>
@@ -43,6 +45,7 @@ namespace Aurore::Tests {
 		using Aurore::Protocol::LoginAcceptedResolution;
 		using Aurore::Protocol::LoginStartRequest;
 		using Aurore::Protocol::PacketFrame;
+		using Aurore::Protocol::PlayerInputRequest;
 		using Aurore::Protocol::PreparedPacketFrame;
 		using Aurore::Protocol::ProtocolError;
 		using Aurore::Protocol::ProtocolRequest;
@@ -109,7 +112,8 @@ namespace Aurore::Tests {
 			Aurore::Protocol::ProtocolAction Admission;
 		};
 
-		[[nodiscard]] PlayAdmissionFixture EnterPlayWithAdmission() {
+		[[nodiscard]] PlayAdmissionFixture EnterPlayWithAdmission(
+			std::vector<Aurore::Protocol::PlayChunkColumn> initial_chunks = {}) {
 			ProtocolSession session;
 
 			ByteBuffer handshake_payload;
@@ -175,7 +179,12 @@ namespace Aurore::Tests {
 
 			const auto complete_request = GetRequest<ConfigurationCompleteRequest>(finish->Requests.front());
 			auto accepted = session.ResolveConfiguration(ConfigurationResolution{
-				ConfigurationAcceptedResolution{ .Id = complete_request.Id }
+				ConfigurationAcceptedResolution{
+					.Id = complete_request.Id,
+					.Admission = Aurore::Protocol::PlayAdmission{
+						.InitialChunks = std::move(initial_chunks),
+					},
+				}
 			});
 			if (!accepted || session.GetState() != ProtocolState::Play)
 				throw std::runtime_error("Play fixture admission failed.");
@@ -198,16 +207,64 @@ namespace Aurore::Tests {
 		}
 	}
 
+	/* The client renderer needs eight horizontally adjacent, lit columns. */
+	[[nodiscard]] std::vector<Aurore::Protocol::PlayChunkColumn> MakeNineChunkColumns() {
+		std::vector<Aurore::Protocol::PlayChunkColumn> result;
+		result.reserve(9);
+		const auto air = ParseRequired("minecraft:air");
+		const auto plains = ParseRequired("minecraft:plains");
+
+		for (std::int32_t z = -1; z <= 1; ++z) {
+			for (std::int32_t x = -1; x <= 1; ++x) {
+				if (x == 0 && z == 0) continue;
+				result.push_back(Aurore::Protocol::PlayChunkColumn{
+					.X = x, .Z = z, .MinimumY = -64, .Height = 384,
+					.AirBlock = air, .Biome = plains,
+				});
+			}
+		}
+
+		Aurore::Protocol::PlayChunkColumn center{
+			.X = 0, .Z = 0, .MinimumY = -64, .Height = 384,
+			.AirBlock = air, .Biome = plains,
+		};
+		for (std::uint8_t z = 0; z < 5; ++z) {
+			for (std::uint8_t x = 0; x < 5; ++x) {
+				center.Blocks.push_back(Aurore::Protocol::PlayChunkBlock{
+					.X = x, .Y = 61, .Z = z,
+					.Block = ParseRequired("minecraft:stone"),
+				});
+				center.Blocks.push_back(Aurore::Protocol::PlayChunkBlock{
+					.X = x, .Y = 62, .Z = z,
+						.Block = ParseRequired("minecraft:dirt"),
+				});
+				center.Blocks.push_back(Aurore::Protocol::PlayChunkBlock{
+					.X = x, .Y = 63, .Z = z,
+					.Block = ParseRequired("minecraft:grass_block"),
+				});
+			}
+		}
+		result.push_back(std::move(center));
+		return result;
+	}
+
 	TEST(PlayProtocolTests, UsesProtocol774FirstLightPacketIds) {
+		EXPECT_EQ(Play::Clientbound::ChunkBatchFinishedPacketId, 0x0B);
+		EXPECT_EQ(Play::Clientbound::ChunkBatchStartPacketId, 0x0C);
+		EXPECT_EQ(Play::Clientbound::GameEventPacketId, 0x26);
 		EXPECT_EQ(Play::Clientbound::LoginPacketId, 0x30);
 		EXPECT_EQ(Play::Clientbound::PlayerPositionPacketId, 0x46);
+		EXPECT_EQ(Play::Clientbound::SetChunkCacheCenterPacketId, 0x5C);
+		EXPECT_EQ(Play::Clientbound::SetChunkCacheRadiusPacketId, 0x5D);
 		EXPECT_EQ(Play::Serverbound::AcceptTeleportationPacketId, 0x00);
+		EXPECT_EQ(Play::Serverbound::ChunkBatchReceivedPacketId, 0x0A);
 		EXPECT_EQ(Play::Serverbound::ClientTickEndPacketId, 0x0C);
 		EXPECT_EQ(Play::Serverbound::KeepAlivePacketId, 0x1B);
 		EXPECT_EQ(Play::Serverbound::MovePlayerPositionPacketId, 0x1D);
 		EXPECT_EQ(Play::Serverbound::MovePlayerPositionRotationPacketId, 0x1E);
 		EXPECT_EQ(Play::Serverbound::MovePlayerRotationPacketId, 0x1F);
 		EXPECT_EQ(Play::Serverbound::MovePlayerStatusOnlyPacketId, 0x20);
+		EXPECT_EQ(Play::Serverbound::PlayerInputPacketId, 0x2A);
 		EXPECT_EQ(Play::Serverbound::PlayerLoadedPacketId, 0x2B);
 	}
 
@@ -264,6 +321,67 @@ namespace Aurore::Tests {
 		EXPECT_TRUE(reader.Empty());
 	}
 
+	TEST(PlayProtocolTests, EncodesStartWaitingForLevelChunksEvent) {
+		const auto frame = Play::Clientbound::Encode(
+			Play::Clientbound::GameEvent{
+				.Event = Play::Clientbound::GameEventType::StartWaitingForLevelChunks,
+				.Value = 0.0F,
+			});
+
+		EXPECT_EQ(frame.PacketId, Play::Clientbound::GameEventPacketId);
+
+		ByteReader reader(frame.Payload);
+		ASSERT_EQ(*reader.ReadUnsignedByte(), 13u);
+		EXPECT_FLOAT_EQ(*reader.ReadFloat(), 0.0F);
+		EXPECT_TRUE(reader.Empty());
+	}
+
+	TEST(PlayProtocolTests, EncodesChunkBatchFraming) {
+		const auto start = Play::Clientbound::Encode(
+			Play::Clientbound::ChunkBatchStart{});
+		EXPECT_EQ(start.PacketId, Play::Clientbound::ChunkBatchStartPacketId);
+		EXPECT_TRUE(start.Payload.empty());
+
+		const auto finished = Play::Clientbound::Encode(
+			Play::Clientbound::ChunkBatchFinished{
+				.BatchSize = 1,
+			});
+		EXPECT_EQ(finished.PacketId, Play::Clientbound::ChunkBatchFinishedPacketId);
+
+		ByteReader reader(finished.Payload);
+		ASSERT_EQ(*reader.ReadVarInt(), 1);
+		EXPECT_TRUE(reader.Empty());
+	}
+
+	TEST(PlayProtocolTests, EncodesSetChunkCacheCenter) {
+		const auto frame = Play::Clientbound::Encode(
+			Play::Clientbound::SetChunkCacheCenter{
+				.ChunkX = 0,
+				.ChunkZ = 0,
+			});
+
+		EXPECT_EQ(frame.PacketId, Play::Clientbound::SetChunkCacheCenterPacketId);
+		ByteReader reader(frame.Payload);
+		ASSERT_EQ(*reader.ReadVarInt(), 0);
+		ASSERT_EQ(*reader.ReadVarInt(), 0);
+		EXPECT_TRUE(reader.Empty());
+	}
+
+	TEST(PlayProtocolTests, EncodesSetChunkCacheRadius) {
+		const auto frame = Play::Clientbound::Encode(
+			Play::Clientbound::SetChunkCacheRadius{
+				.Radius = 2,
+			});
+
+		EXPECT_EQ(
+			frame.PacketId,
+			Play::Clientbound::SetChunkCacheRadiusPacketId);
+
+		ByteReader reader(frame.Payload);
+		ASSERT_EQ(*reader.ReadVarInt(), 2);
+		EXPECT_TRUE(reader.Empty());
+	}
+
 	TEST(PlayProtocolTests, EncodesInitialPlayerPositionPacket) {
 		const auto frame = Play::Clientbound::Encode(Play::Clientbound::PlayerPosition{
 			.TeleportId = 1,
@@ -300,6 +418,20 @@ namespace Aurore::Tests {
 		ASSERT_TRUE(result.has_value());
 		ASSERT_TRUE(std::holds_alternative<Play::Serverbound::AcceptTeleportation>(*result));
 		EXPECT_EQ(std::get<Play::Serverbound::AcceptTeleportation>(*result).TeleportId, 42);
+	}
+
+	TEST(PlayProtocolTests, DecodesChunkBatchReceived) {
+		ByteBuffer payload;
+		payload.WriteFloat(12.5F);
+
+		const auto result = Play::Serverbound::Decode(
+			MakeFrame(Play::Serverbound::ChunkBatchReceivedPacketId, payload));
+
+		ASSERT_TRUE(result.has_value());
+		ASSERT_TRUE(std::holds_alternative<Play::Serverbound::ChunkBatchReceived>(*result));
+		EXPECT_FLOAT_EQ(
+			std::get<Play::Serverbound::ChunkBatchReceived>(*result).ChunksPerTick,
+			12.5F);
 	}
 
 	TEST(PlayProtocolTests, DecodesKeepAliveResponse) {
@@ -371,6 +503,26 @@ namespace Aurore::Tests {
 		EXPECT_FALSE(packet.Flags.HorizontalCollision);
 	}
 
+	TEST(PlayProtocolTests, DecodesPlayerInputFlags) {
+		ByteBuffer payload;
+		payload.WriteUnsignedByte(0x75);
+
+		const auto result = Play::Serverbound::Decode(
+			MakeFrame(Play::Serverbound::PlayerInputPacketId, payload));
+
+		ASSERT_TRUE(result.has_value());
+		ASSERT_TRUE(std::holds_alternative<Play::Serverbound::PlayerInput>(*result));
+
+		const auto& flags = std::get<Play::Serverbound::PlayerInput>(*result).Flags;
+		EXPECT_TRUE(flags.Forward);
+		EXPECT_FALSE(flags.Backward);
+		EXPECT_TRUE(flags.Left);
+		EXPECT_FALSE(flags.Right);
+		EXPECT_TRUE(flags.Jump);
+		EXPECT_TRUE(flags.Shift);
+		EXPECT_TRUE(flags.Sprint);
+	}
+
 	TEST(PlayProtocolTests, AcceptsEmptyTickEndAndPlayerLoaded) {
 		const auto tick_end = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::ClientTickEndPacketId));
 		const auto player_loaded = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::PlayerLoadedPacketId));
@@ -402,11 +554,69 @@ namespace Aurore::Tests {
 		EXPECT_EQ(result.error(), ProtocolError::UnexpectedPacket);
 	}
 
-	TEST(PlayProtocolSessionTests, AdmissionEmitsMinimalBootstrapSequence) {
+	TEST(PlayProtocolSessionTests, AdmissionEmitsWorldEntryBootstrapSequence) {
 		auto fixture = EnterPlayWithAdmission();
-		ASSERT_EQ(fixture.Admission.OutboundPackets.size(), 2u);
+		ASSERT_EQ(fixture.Admission.OutboundPackets.size(), 3u);
 		EXPECT_EQ(GetPreparedFrame(fixture.Admission.OutboundPackets[0]).PacketId, Play::Clientbound::LoginPacketId);
-		EXPECT_EQ(GetPreparedFrame(fixture.Admission.OutboundPackets[1]).PacketId, Play::Clientbound::PlayerPositionPacketId);
+		EXPECT_EQ(GetPreparedFrame(fixture.Admission.OutboundPackets[1]).PacketId, Play::Clientbound::GameEventPacketId);
+		EXPECT_EQ(GetPreparedFrame(fixture.Admission.OutboundPackets[2]).PacketId, Play::Clientbound::PlayerPositionPacketId);
+		EXPECT_EQ(fixture.Session.GetState(), ProtocolState::Play);
+	}
+
+	TEST(PlayProtocolSessionTests, AdmissionSendsNineLitChunkColumnsInOneBatch) {
+		auto fixture = EnterPlayWithAdmission(MakeNineChunkColumns());
+		const auto& packets = fixture.Admission.OutboundPackets;
+		ASSERT_EQ(packets.size(), 16u);
+
+		const std::array<std::int32_t, 6> prefix{
+			Play::Clientbound::LoginPacketId,
+			Play::Clientbound::GameEventPacketId,
+			Play::Clientbound::PlayerPositionPacketId,
+			Play::Clientbound::SetChunkCacheRadiusPacketId,
+			Play::Clientbound::SetChunkCacheCenterPacketId,
+			Play::Clientbound::ChunkBatchStartPacketId,
+		};
+		for (std::size_t i = 0; i < prefix.size(); ++i)
+			EXPECT_EQ(GetPreparedFrame(packets[i]).PacketId, prefix[i]);
+
+		{
+			ByteReader radius(GetPreparedFrame(packets[3]).Payload);
+			ASSERT_EQ(*radius.ReadVarInt(), 2);
+			EXPECT_TRUE(radius.Empty());
+		}
+		{
+			ByteReader center(GetPreparedFrame(packets[4]).Payload);
+			ASSERT_EQ(*center.ReadVarInt(), 0);
+			ASSERT_EQ(*center.ReadVarInt(), 0);
+			EXPECT_TRUE(center.Empty());
+		}
+
+		std::set<std::pair<std::int32_t, std::int32_t>> positions;
+		for (std::size_t i = 6; i < 15; ++i) {
+			const auto& chunk = GetPreparedFrame(packets[i]);
+			ASSERT_EQ(chunk.PacketId, Play::Clientbound::LevelChunkWithLightPacketId);
+			ByteReader reader(chunk.Payload);
+			const auto x = reader.ReadInt32();
+			const auto z = reader.ReadInt32();
+			ASSERT_TRUE(x.has_value());
+			ASSERT_TRUE(z.has_value());
+			EXPECT_GE(*x, -1);
+			EXPECT_LE(*x, 1);
+			EXPECT_GE(*z, -1);
+			EXPECT_LE(*z, 1);
+			EXPECT_TRUE(positions.emplace(*x, *z).second);
+		}
+		EXPECT_EQ(positions.size(), 9u);
+		{
+			ByteReader last_chunk(GetPreparedFrame(packets[14]).Payload);
+			ASSERT_EQ(*last_chunk.ReadInt32(), 0);
+			ASSERT_EQ(*last_chunk.ReadInt32(), 0);
+		}
+		const auto& finish = GetPreparedFrame(packets[15]);
+		ASSERT_EQ(finish.PacketId, Play::Clientbound::ChunkBatchFinishedPacketId);
+		ByteReader batch(finish.Payload);
+		ASSERT_EQ(*batch.ReadVarInt(), 9);
+		EXPECT_TRUE(batch.Empty());
 		EXPECT_EQ(fixture.Session.GetState(), ProtocolState::Play);
 	}
 
@@ -417,6 +627,25 @@ namespace Aurore::Tests {
 		EXPECT_TRUE(result->OutboundPackets.empty());
 		EXPECT_TRUE(result->Requests.empty());
 		EXPECT_FALSE(result->Disconnect);
+		EXPECT_EQ(session.GetState(), ProtocolState::Play);
+	}
+
+	TEST(PlayProtocolSessionTests, PlayerInputBecomesCoreObservationInsteadOfDisconnect) {
+		auto session = EnterPlay();
+
+		ByteBuffer payload;
+		payload.WriteUnsignedByte(0x11);
+
+		const auto result = session.HandlePacket(
+			MakeFrame(Play::Serverbound::PlayerInputPacketId, payload));
+
+		ASSERT_TRUE(result.has_value());
+		ASSERT_EQ(result->Requests.size(), 1u);
+		ASSERT_TRUE(std::holds_alternative<PlayerInputRequest>(result->Requests.front()));
+
+		const auto& request = std::get<PlayerInputRequest>(result->Requests.front());
+		EXPECT_TRUE(request.Flags.Forward);
+		EXPECT_TRUE(request.Flags.Jump);
 		EXPECT_EQ(session.GetState(), ProtocolState::Play);
 	}
 

@@ -20,10 +20,13 @@
 namespace Aurore::Core {
 	class ClientService final {
 	public:
-		ClientService(Network::NetworkManager& network_manager, RegistrySnapshotStore& registry_snapshots, World::WorldManager& world_manager) noexcept;
+		ClientService(Network::NetworkManager& network_manager,
+			RegistrySnapshotStore& registry_snapshots,
+			World::WorldManager& world_manager) noexcept;
 
 		ClientService(const ClientService&) = delete;
 		ClientService& operator=(const ClientService&) = delete;
+
 		ClientService(ClientService&&) = delete;
 		ClientService& operator=(ClientService&&) = delete;
 
@@ -59,7 +62,10 @@ namespace Aurore::Core {
 		[[nodiscard]] bool HandleLoginStartRequest(ClientConnection& client, const Protocol::LoginStartRequest& request);
 		[[nodiscard]] bool HandleConfigurationStartRequest(ClientConnection& client, const Protocol::ConfigurationStartRequest& request);
 		[[nodiscard]] bool HandleConfigurationCompleteRequest(ClientConnection& client, const Protocol::ConfigurationCompleteRequest& request);
+		[[nodiscard]] bool HandleTeleportAcknowledgedRequest(ClientConnection& client, const Protocol::TeleportAcknowledgedRequest& request);
+		[[nodiscard]] bool HandleChunkBatchFeedbackRequest(ClientConnection& client, const Protocol::ChunkBatchFeedbackRequest& request);
 		[[nodiscard]] bool HandlePlayerMovementRequest(ClientConnection& client, const Protocol::PlayerMovementRequest& request);
+		[[nodiscard]] bool HandlePlayerInputRequest(ClientConnection& client, const Protocol::PlayerInputRequest& request);
 		[[nodiscard]] bool HandlePlayerLoadedRequest(ClientConnection& client, const Protocol::PlayerLoadedRequest& request);
 
 		void RemoveWorldPlayer(Network::ConnectionId connection) noexcept;
@@ -79,4 +85,3 @@ namespace Aurore::Core {
 		bool m_FatalNetworkFailure{ false };
 	};
 }
-

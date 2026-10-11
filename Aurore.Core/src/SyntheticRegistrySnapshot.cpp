@@ -37,10 +37,7 @@ namespace {
 		explicit SyntheticRegistrySnapshotAssembler(RegistryGeneration generation) noexcept
 			: m_Generation(generation) {}
 
-		[[nodiscard]] std::expected<
-			std::shared_ptr<const RegistrySnapshot>,
-			SyntheticRegistrySnapshotError>
-		Build() {
+		[[nodiscard]] std::expected<std::shared_ptr<const RegistrySnapshot>, SyntheticRegistrySnapshotError> Build() {
 			if (m_Generation == Aurore::Util::NoRegistryGeneration)
 				return std::unexpected(SyntheticRegistrySnapshotError{
 					.Code = SyntheticRegistrySnapshotErrorCode::InvalidGeneration,
@@ -87,6 +84,12 @@ namespace {
 			ResourceLocation ItemsTag;
 			ResourceLocation BiomesTag;
 			ResourceLocation DimensionTypesTag;
+
+			ResourceLocation Air;
+			ResourceLocation Stone;
+			ResourceLocation Dirt;
+			ResourceLocation GrassBlock;
+			ResourceLocation Plains;
 		};
 
 		[[nodiscard]] static std::expected<ResourceLocation, SyntheticRegistrySnapshotError> ParseLocation(std::string_view value) {
@@ -104,24 +107,48 @@ namespace {
 		[[nodiscard]] static std::expected<Keys, SyntheticRegistrySnapshotError> BuildKeys() {
 			auto block = ParseLocation("aurore_test:block");
 			if (!block) return std::unexpected(block.error());
+
 			auto polished_block = ParseLocation("aurore_test:polished_block");
 			if (!polished_block) return std::unexpected(polished_block.error());
+
 			auto item = ParseLocation("aurore_test:item");
 			if (!item) return std::unexpected(item.error());
+
 			auto polished_item = ParseLocation("aurore_test:polished_item");
 			if (!polished_item) return std::unexpected(polished_item.error());
+
 			auto biome = ParseLocation("aurore_test:biome");
 			if (!biome) return std::unexpected(biome.error());
+
 			auto dimension_type = ParseLocation("aurore_test:dimension_type");
 			if (!dimension_type) return std::unexpected(dimension_type.error());
+
 			auto blocks_tag = ParseLocation("aurore_test:blocks");
 			if (!blocks_tag) return std::unexpected(blocks_tag.error());
+
 			auto items_tag = ParseLocation("aurore_test:items");
 			if (!items_tag) return std::unexpected(items_tag.error());
+
 			auto biomes_tag = ParseLocation("aurore_test:biomes");
 			if (!biomes_tag) return std::unexpected(biomes_tag.error());
+
 			auto dimension_types_tag = ParseLocation("aurore_test:dimension_types");
 			if (!dimension_types_tag) return std::unexpected(dimension_types_tag.error());
+
+			auto air = ParseLocation("minecraft:air");
+			if (!air) return std::unexpected(air.error());
+
+			auto stone = ParseLocation("minecraft:stone");
+			if (!stone) return std::unexpected(stone.error());
+
+			auto dirt = ParseLocation("minecraft:dirt");
+			if (!dirt) return std::unexpected(dirt.error());
+
+			auto grass_block = ParseLocation("minecraft:grass_block");
+			if (!grass_block) return std::unexpected(grass_block.error());
+
+			auto plains = ParseLocation("minecraft:plains");
+			if (!plains) return std::unexpected(plains.error());
 
 			return Keys{
 				.Block = std::move(*block),
@@ -134,14 +161,15 @@ namespace {
 				.ItemsTag = std::move(*items_tag),
 				.BiomesTag = std::move(*biomes_tag),
 				.DimensionTypesTag = std::move(*dimension_types_tag),
+				.Air = std::move(*air),
+				.Stone = std::move(*stone),
+				.Dirt = std::move(*dirt),
+				.GrassBlock = std::move(*grass_block),
+				.Plains = std::move(*plains),
 			};
 		}
 
-		[[nodiscard]] static SyntheticRegistrySnapshotError RegistryDeclarationFailure(
-			RegistryKind registry,
-			const ResourceLocation& key,
-			const Aurore::Util::RegistryDeclarationError& cause) {
-
+		[[nodiscard]] static SyntheticRegistrySnapshotError RegistryDeclarationFailure(RegistryKind registry, const ResourceLocation& key, const Aurore::Util::RegistryDeclarationError& cause) {
 			return SyntheticRegistrySnapshotError{
 				.Code = SyntheticRegistrySnapshotErrorCode::RegistryDeclarationFailed,
 				.Registry = registry,
@@ -150,11 +178,7 @@ namespace {
 			};
 		}
 
-		[[nodiscard]] static SyntheticRegistrySnapshotError TagDeclarationFailure(
-			RegistryKind registry,
-			const ResourceLocation& key,
-			const Aurore::Util::RegistryTagDeclarationError& cause) {
-
+		[[nodiscard]] static SyntheticRegistrySnapshotError TagDeclarationFailure(RegistryKind registry, const ResourceLocation& key, const Aurore::Util::RegistryTagDeclarationError& cause) {
 			return SyntheticRegistrySnapshotError{
 				.Code = SyntheticRegistrySnapshotErrorCode::TagDeclarationFailed,
 				.Registry = registry,
@@ -164,137 +188,91 @@ namespace {
 		}
 
 		[[nodiscard]] std::expected<void, SyntheticRegistrySnapshotError> DeclareBlocks(const Keys& keys) {
-			const auto block = m_Builder.Blocks().Declare(
-				keys.Block,
-				BlockDefinition{
-					.Data = MakeBlockData(1, false),
-				});
+			const auto block = m_Builder.Blocks().Declare(keys.Block, BlockDefinition{ .Data = MakeBlockData(1, false), .DefaultStateId = 100, });
 			if (!block)
-				return std::unexpected(RegistryDeclarationFailure(
-					RegistryKind::Block,
-					keys.Block,
-					block.error()));
+				return std::unexpected(RegistryDeclarationFailure(RegistryKind::Block, keys.Block, block.error()));
 
-			const auto polished_block = m_Builder.Blocks().Declare(
-				keys.PolishedBlock,
-				BlockDefinition{
-					.Data = MakeBlockData(2, true),
-				});
+			const auto polished_block = m_Builder.Blocks().Declare(keys.PolishedBlock, BlockDefinition{ .Data = MakeBlockData(2, true), .DefaultStateId = 101, });
 			if (!polished_block)
-				return std::unexpected(RegistryDeclarationFailure(
-					RegistryKind::Block,
-					keys.PolishedBlock,
-					polished_block.error()));
+				return std::unexpected(RegistryDeclarationFailure(RegistryKind::Block, keys.PolishedBlock, polished_block.error()));
+
+			const auto declare_first_light_block = [this](const ResourceLocation& key, Aurore::Util::RegistryRuntimeId default_state_id) -> std::expected<void, SyntheticRegistrySnapshotError> {
+				const auto declaration = m_Builder.Blocks().Declare(key, BlockDefinition{ .Data = MakeBlockData(1, false), .DefaultStateId = default_state_id, });
+				if (!declaration)
+					return std::unexpected(RegistryDeclarationFailure(RegistryKind::Block, key, declaration.error()));
+				return {};
+			};
+
+			if (const auto result = declare_first_light_block(keys.Air, 0); !result)
+				return std::unexpected(result.error());
+
+			if (const auto result = declare_first_light_block(keys.Stone, 1); !result)
+				return std::unexpected(result.error());
+
+			if (const auto result = declare_first_light_block(keys.Dirt, 2); !result)
+				return std::unexpected(result.error());
+
+			if (const auto result = declare_first_light_block(keys.GrassBlock, 3); !result)
+				return std::unexpected(result.error());
 
 			return {};
 		}
 
 		[[nodiscard]] std::expected<void, SyntheticRegistrySnapshotError> DeclareItems(const Keys& keys) {
-			const auto item = m_Builder.Items().Declare(
-				keys.Item,
-				ItemDefinition{
-					.Data = MakeItemData(64, u"base", u"aurore_test:block"),
-				});
+			const auto item = m_Builder.Items().Declare(keys.Item, ItemDefinition{ .Data = MakeItemData(64, u"base", u"aurore_test:block"), });
 			if (!item)
-				return std::unexpected(RegistryDeclarationFailure(
-					RegistryKind::Item,
-					keys.Item,
-					item.error()));
+				return std::unexpected(RegistryDeclarationFailure(RegistryKind::Item, keys.Item, item.error()));
 
-			const auto polished_item = m_Builder.Items().Declare(
-				keys.PolishedItem,
-				ItemDefinition{
-					.Data = MakeItemData(64, u"polished", u"aurore_test:polished_block"),
-				});
+			const auto polished_item = m_Builder.Items().Declare(keys.PolishedItem, ItemDefinition{ .Data = MakeItemData(64, u"polished", u"aurore_test:polished_block"), });
 			if (!polished_item)
-				return std::unexpected(RegistryDeclarationFailure(
-					RegistryKind::Item,
-					keys.PolishedItem,
-					polished_item.error()));
-
+				return std::unexpected(RegistryDeclarationFailure(RegistryKind::Item, keys.PolishedItem, polished_item.error()));
 			return {};
 		}
 
 		[[nodiscard]] std::expected<void, SyntheticRegistrySnapshotError> DeclareBiomes(const Keys& keys) {
-			const auto biome = m_Builder.Biomes().Declare(
-				keys.Biome,
-				BiomeDefinition{
-					.Data = MakeBiomeData(),
-				});
+			const auto biome = m_Builder.Biomes().Declare(keys.Biome, BiomeDefinition{ .Data = MakeBiomeData(), });
 			if (!biome)
-				return std::unexpected(RegistryDeclarationFailure(
-					RegistryKind::Biome,
-					keys.Biome,
-					biome.error()));
+				return std::unexpected(RegistryDeclarationFailure(RegistryKind::Biome, keys.Biome, biome.error()));
 
+			const auto plains = m_Builder.Biomes().Declare(keys.Plains, BiomeDefinition{ .Data = MakeBiomeData(), });
+			if (!plains)
+				return std::unexpected(RegistryDeclarationFailure(RegistryKind::Biome, keys.Plains, plains.error()));
 			return {};
 		}
 
 		[[nodiscard]] std::expected<void, SyntheticRegistrySnapshotError> DeclareDimensionTypes(const Keys& keys) {
-			const auto dimension_type = m_Builder.DimensionTypes().Declare(
-				keys.DimensionType,
-				DimensionTypeDefinition{
-					.Data = MakeDimensionTypeData(),
-				});
+			const auto dimension_type = m_Builder.DimensionTypes().Declare(keys.DimensionType, DimensionTypeDefinition{ .Data = MakeDimensionTypeData(), });
 			if (!dimension_type)
-				return std::unexpected(RegistryDeclarationFailure(
-					RegistryKind::DimensionType,
-					keys.DimensionType,
-					dimension_type.error()));
-
+				return std::unexpected(RegistryDeclarationFailure(RegistryKind::DimensionType, keys.DimensionType, dimension_type.error()));
 			return {};
 		}
 
 		[[nodiscard]] std::expected<void, SyntheticRegistrySnapshotError> DeclareTags(const Keys& keys) {
-			const auto blocks = m_Builder.BlockTags().Declare(
-				keys.BlocksTag,
-				std::vector<ResourceLocation>{ keys.Block, keys.PolishedBlock });
+			const auto blocks = m_Builder.BlockTags().Declare(keys.BlocksTag, std::vector<ResourceLocation>{ keys.Block, keys.PolishedBlock });
 			if (!blocks)
-				return std::unexpected(TagDeclarationFailure(
-					RegistryKind::Block,
-					keys.BlocksTag,
-					blocks.error()));
+				return std::unexpected(TagDeclarationFailure(RegistryKind::Block, keys.BlocksTag, blocks.error()));
 
-			const auto items = m_Builder.ItemTags().Declare(
-				keys.ItemsTag,
-				std::vector<ResourceLocation>{ keys.Item, keys.PolishedItem });
+			const auto items = m_Builder.ItemTags().Declare(keys.ItemsTag, std::vector<ResourceLocation>{ keys.Item, keys.PolishedItem });
 			if (!items)
-				return std::unexpected(TagDeclarationFailure(
-					RegistryKind::Item,
-					keys.ItemsTag,
-					items.error()));
+				return std::unexpected(TagDeclarationFailure(RegistryKind::Item, keys.ItemsTag, items.error()));
 
-			const auto biomes = m_Builder.BiomeTags().Declare(
-				keys.BiomesTag,
-				std::vector<ResourceLocation>{ keys.Biome });
+			const auto biomes = m_Builder.BiomeTags().Declare(keys.BiomesTag, std::vector<ResourceLocation>{ keys.Biome });
 			if (!biomes)
-				return std::unexpected(TagDeclarationFailure(
-					RegistryKind::Biome,
-					keys.BiomesTag,
-					biomes.error()));
+				return std::unexpected(TagDeclarationFailure(RegistryKind::Biome, keys.BiomesTag, biomes.error()));
 
-			const auto dimension_types = m_Builder.DimensionTypeTags().Declare(
-				keys.DimensionTypesTag,
-				std::vector<ResourceLocation>{ keys.DimensionType });
+			const auto dimension_types = m_Builder.DimensionTypeTags().Declare(keys.DimensionTypesTag, std::vector<ResourceLocation>{ keys.DimensionType });
 			if (!dimension_types)
-				return std::unexpected(TagDeclarationFailure(
-					RegistryKind::DimensionType,
-					keys.DimensionTypesTag,
-					dimension_types.error()));
+				return std::unexpected(TagDeclarationFailure(RegistryKind::DimensionType, keys.DimensionTypesTag, dimension_types.error()));
 
 			return {};
 		}
 
-		[[nodiscard]] static std::expected<void, RegistrySnapshotError> ValidateReferences(
-			const RegistrySnapshotDeclarationView& declarations) {
-
+		[[nodiscard]] static std::expected<void, RegistrySnapshotError> ValidateReferences(const RegistrySnapshotDeclarationView& declarations) {
 			const auto& items = declarations.GetItems();
 			for (std::size_t index{ 0 }; index < items.Size(); ++index) {
 				const auto& item = items.GetDeclarations()[index];
 				const auto* placed_block_value = item.Value.Data.Find(u"placed_block");
-				const auto* placed_block_text = placed_block_value == nullptr
-					? nullptr
-					: placed_block_value->AsString();
+				const auto* placed_block_text = placed_block_value == nullptr ? nullptr : placed_block_value->AsString();
 
 				if (placed_block_text == nullptr)
 					return std::unexpected(RegistrySnapshotError{
@@ -328,7 +306,8 @@ namespace {
 						.ReferencedKey = std::nullopt,
 					});
 
-				if (declarations.GetBlocks().Contains(*block_key)) continue;
+				if (declarations.GetBlocks().Contains(*block_key))
+					continue;
 
 				return std::unexpected(RegistrySnapshotError{
 					.Code = RegistrySnapshotErrorCode::MissingReference,
@@ -343,21 +322,14 @@ namespace {
 			return {};
 		}
 
-		[[nodiscard]] static NbtCompound MakeBlockData(
-			std::int32_t state_count,
-			bool polished) {
-
+		[[nodiscard]] static NbtCompound MakeBlockData(std::int32_t state_count, bool polished) {
 			NbtCompound data;
 			data.Set(NbtString{ u"state_count" }, NbtValue::Int(state_count));
 			data.Set(NbtString{ u"polished" }, NbtValue::Byte(polished ? 1 : 0));
 			return data;
 		}
 
-		[[nodiscard]] static NbtCompound MakeItemData(
-			std::int32_t maximum_stack_size,
-			std::u16string_view variant,
-			std::u16string_view placed_block) {
-
+		[[nodiscard]] static NbtCompound MakeItemData(std::int32_t maximum_stack_size, std::u16string_view variant, std::u16string_view placed_block) {
 			NbtCompound data;
 			data.Set(NbtString{ u"maximum_stack_size" }, NbtValue::Int(maximum_stack_size));
 			data.Set(NbtString{ u"variant" }, NbtValue::String(NbtString{ std::u16string{ variant } }));
@@ -385,11 +357,7 @@ namespace {
 }
 
 namespace Aurore::Core {
-	std::expected<
-		std::shared_ptr<const Aurore::Util::RegistrySnapshot>,
-		SyntheticRegistrySnapshotError>
-	SyntheticRegistrySnapshotFactory::Build(Aurore::Util::RegistryGeneration generation) {
+	std::expected<std::shared_ptr<const Aurore::Util::RegistrySnapshot>, SyntheticRegistrySnapshotError> SyntheticRegistrySnapshotFactory::Build(Aurore::Util::RegistryGeneration generation) {
 		return SyntheticRegistrySnapshotAssembler{ generation }.Build();
 	}
 }
-

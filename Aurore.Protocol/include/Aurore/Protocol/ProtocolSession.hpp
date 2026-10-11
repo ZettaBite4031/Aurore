@@ -2,6 +2,7 @@
 
 #include <Aurore/Protocol/ConfigurationSequence.hpp>
 #include <Aurore/Protocol/PacketCodec.hpp>
+#include <Aurore/Protocol/PlayChunk.hpp>
 #include <Aurore/Protocol/ProtocolTypes.hpp>
 #include <Aurore/Protocol/PacketFrame.hpp>
 
@@ -43,13 +44,28 @@ namespace Aurore::Protocol {
 		bool HorizontalCollision{ false };
 	};
 
+	struct TeleportAcknowledgedRequest final {
+		std::int32_t TeleportId{ 0 };
+	};
+
+	struct ChunkBatchFeedbackRequest final {
+		float ChunksPerTick{ 0.0F };
+	};
+
+	struct PlayerInputRequest final {
+		Packets::Play::PlayerInputFlags Flags;
+	};
+
 	struct PlayerLoadedRequest final {};
 
 	using ProtocolRequest = std::variant<
 		LoginStartRequest,
 		ConfigurationStartRequest,
 		ConfigurationCompleteRequest,
+		TeleportAcknowledgedRequest,
+		ChunkBatchFeedbackRequest,
 		PlayerMovementRequest,
+		PlayerInputRequest,
 		PlayerLoadedRequest>;
 
 	struct ConfigurationReadyResolution final {
@@ -65,6 +81,8 @@ namespace Aurore::Protocol {
 		double Z{ 0.5 };
 		float Yaw{ 0.0F };
 		float Pitch{ 0.0F };
+		std::int32_t SeaLevel{ 63 };
+		std::vector<PlayChunkColumn> InitialChunks;
 	};
 
 	struct ConfigurationAcceptedResolution final {
@@ -165,12 +183,14 @@ namespace Aurore::Protocol {
 		[[nodiscard]] ProtocolHandleResult HandleConfigurationPacket(const Packets::Configuration::Serverbound::FinishConfiguration& packet);
 
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::AcceptTeleportation& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::ChunkBatchReceived& packet);
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::ClientTickEnd& packet);
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::KeepAlive& packet);
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::MovePlayerPosition& packet);
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::MovePlayerPositionRotation& packet);
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::MovePlayerRotation& packet);
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::MovePlayerStatusOnly& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::PlayerInput& packet);
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::PlayerLoaded& packet);
 
 		[[nodiscard]] ProtocolHandleResult ResolveLogin(const LoginAcceptedResolution& resolution);

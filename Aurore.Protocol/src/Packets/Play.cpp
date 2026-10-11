@@ -7,7 +7,22 @@
 namespace Aurore::Protocol::Packets::Play {
 	namespace {
 		[[nodiscard]] MovementFlags DecodeMovementFlags(std::uint8_t value) noexcept {
-			return MovementFlags{ .OnGround = (value & 0x01u) != 0, .HorizontalCollision = (value & 0x02u) != 0 };
+			return MovementFlags{
+				.OnGround = (value & 0x01u) != 0,
+				.HorizontalCollision = (value & 0x02u) != 0,
+			};
+		}
+
+		[[nodiscard]] PlayerInputFlags DecodePlayerInputFlags(std::uint8_t value) noexcept {
+			return PlayerInputFlags{
+				.Forward = (value & 0x01u) != 0,
+				.Backward = (value & 0x02u) != 0,
+				.Left = (value & 0x04u) != 0,
+				.Right = (value & 0x08u) != 0,
+				.Jump = (value & 0x10u) != 0,
+				.Shift = (value & 0x20u) != 0,
+				.Sprint = (value & 0x40u) != 0,
+			};
 		}
 
 		[[nodiscard]] ProtocolResult<Serverbound::Packet> DecodeEmptyPacket(const PacketFrame& frame, Serverbound::Packet packet) {
@@ -36,6 +51,33 @@ namespace Aurore::Protocol::Packets::Play {
 	}
 
 	namespace Clientbound {
+		PacketFrame Encode(const ChunkBatchStart&) {
+			return PacketFrame{
+				.PacketId = ChunkBatchStartPacketId,
+			};
+		}
+
+		PacketFrame Encode(const ChunkBatchFinished& packet) {
+			Aurore::Util::ByteBuffer payload;
+			payload.WriteVarInt(packet.BatchSize);
+
+			return PacketFrame{
+				.PacketId = ChunkBatchFinishedPacketId,
+				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
+			};
+		}
+
+		PacketFrame Encode(const GameEvent& packet) {
+			Aurore::Util::ByteBuffer payload;
+			payload.WriteUnsignedByte(static_cast<std::uint8_t>(packet.Event));
+			payload.WriteFloat(packet.Value);
+
+			return PacketFrame{
+				.PacketId = GameEventPacketId,
+				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
+			};
+		}
+
 		PacketFrame Encode(const Login& packet) {
 			Aurore::Util::ByteBuffer payload;
 
@@ -56,6 +98,27 @@ namespace Aurore::Protocol::Packets::Play {
 
 			return PacketFrame{
 				.PacketId = LoginPacketId,
+				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
+			};
+		}
+
+		PacketFrame Encode(const SetChunkCacheCenter& packet) {
+			Aurore::Util::ByteBuffer payload;
+			payload.WriteVarInt(packet.ChunkX);
+			payload.WriteVarInt(packet.ChunkZ);
+
+			return PacketFrame{
+				.PacketId = SetChunkCacheCenterPacketId,
+				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
+			};
+		}
+
+		PacketFrame Encode(const SetChunkCacheRadius& packet) {
+			Aurore::Util::ByteBuffer payload;
+			payload.WriteVarInt(packet.Radius);
+
+			return PacketFrame{
+				.PacketId = SetChunkCacheRadiusPacketId,
 				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
 			};
 		}
@@ -94,9 +157,25 @@ namespace Aurore::Protocol::Packets::Play {
 					return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty())
 					return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ AcceptTeleportation{.TeleportId = *teleport_id } };
+				return Packet{ AcceptTeleportation{ .TeleportId = *teleport_id } };
 			}
-			case ClientTickEndPacketId: return DecodeEmptyPacket(frame, Packet{ ClientTickEnd{} });
+			case ChunkBatchReceivedPacketId: {
+				Aurore::Util::ByteReader reader(frame.Payload);
+				const auto chunks_per_tick = reader.ReadFloat();
+
+				if (!chunks_per_tick)
+					return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty())
+					return std::unexpected(ProtocolError::TrailingPacketData);
+
+				return Packet{
+					ChunkBatchReceived{
+						.ChunksPerTick = *chunks_per_tick,
+					}
+				};
+			}
+			case ClientTickEndPacketId:
+				return DecodeEmptyPacket(frame, Packet{ ClientTickEnd{} });
 			case KeepAlivePacketId: {
 				Aurore::Util::ByteReader reader(frame.Payload);
 				const auto id = reader.ReadInt64();
@@ -105,7 +184,7 @@ namespace Aurore::Protocol::Packets::Play {
 					return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty())
 					return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ KeepAlive{.Id = *id} };
+				return Packet{ KeepAlive{ .Id = *id } };
 			}
 			case MovePlayerPositionPacketId: {
 				Aurore::Util::ByteReader reader(frame.Payload);
@@ -152,7 +231,7 @@ namespace Aurore::Protocol::Packets::Play {
 						.Flags = DecodeMovementFlags(*flags),
 					}
 				};
-			} 
+			}
 			case MovePlayerRotationPacketId: {
 				Aurore::Util::ByteReader reader(frame.Payload);
 				const auto yaw = reader.ReadFloat();
@@ -187,8 +266,25 @@ namespace Aurore::Protocol::Packets::Play {
 					}
 				};
 			}
-			case PlayerLoadedPacketId: return DecodeEmptyPacket(frame, Packet{ PlayerLoaded{} });
-			default: return std::unexpected(ProtocolError::UnexpectedPacket);
+			case PlayerInputPacketId: {
+				Aurore::Util::ByteReader reader(frame.Payload);
+				const auto flags = reader.ReadUnsignedByte();
+
+				if (!flags)
+					return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty())
+					return std::unexpected(ProtocolError::TrailingPacketData);
+
+				return Packet{
+					PlayerInput{
+						.Flags = DecodePlayerInputFlags(*flags),
+					}
+				};
+			}
+			case PlayerLoadedPacketId:
+				return DecodeEmptyPacket(frame, Packet{ PlayerLoaded{} });
+			default:
+				return std::unexpected(ProtocolError::UnexpectedPacket);
 			}
 		}
 	}

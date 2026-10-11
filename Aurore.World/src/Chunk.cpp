@@ -44,6 +44,25 @@ namespace Aurore::World {
 
 	bool Chunk::Empty() const noexcept { return m_Blocks.empty(); }
 	std::size_t Chunk::StoredBlockCount() const noexcept { return m_Blocks.size(); }
+
+	std::vector<StoredBlock> Chunk::GetStoredBlocks() const {
+		std::vector<StoredBlock> result;
+		result.reserve(m_Blocks.size());
+
+		for (const auto& [packed, block] : m_Blocks) {
+			result.push_back(StoredBlock{
+				.Position = LocalBlockPosition{
+					.X = static_cast<std::uint8_t>(packed & 0x0Fu),
+					.Y = static_cast<std::int32_t>(static_cast<std::uint32_t>(packed >> 8)),
+					.Z = static_cast<std::uint8_t>((packed >> 4) & 0x0Fu),
+				},
+				.Block = block,
+			});
+		}
+
+		return result;
+	}
+
 	ChunkPosition Chunk::GetPosition() const noexcept { return m_Position; }
 	std::int32_t Chunk::GetMinimumY() const noexcept { return m_MinimumY; }
 	std::int32_t Chunk::GetHeight() const noexcept { return m_Height; }

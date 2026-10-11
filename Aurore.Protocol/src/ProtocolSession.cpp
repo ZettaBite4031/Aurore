@@ -3,6 +3,7 @@
 #include <Aurore/Util/ByteBuffer.hpp>
 
 #include <format>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -20,9 +21,7 @@ namespace Aurore::Protocol {
 		case ProtocolState::Login: return HandleLoginFrame(frame);
 		case ProtocolState::Configuration: return HandleConfigurationFrame(frame);
 		case ProtocolState::Play: return HandlePlayFrame(frame);
-
-		case ProtocolState::Disconnected:
-			return std::unexpected(ProtocolError::UnexpectedPacket);
+		case ProtocolState::Disconnected: return std::unexpected(ProtocolError::UnexpectedPacket);
 		}
 		return std::unexpected(ProtocolError::UnsupportedState);
 	}
@@ -37,7 +36,6 @@ namespace Aurore::Protocol {
 		m_ClientInformation.reset();
 		m_ClientBrand.reset();
 		m_RegistrySnapshot.reset();
-
 		m_ConfigurationPhase = ConfigurationPhase::Complete;
 		m_State = ProtocolState::Disconnected;
 	}
@@ -100,31 +98,23 @@ namespace Aurore::Protocol {
 
 		switch (packet.Intention) {
 		case HandshakeIntention::Status:
-			/*
-				Status remains available to mismatched clients so they can read the
-				advertised server version and protocol number.
-			*/
 			m_Handshake = packet;
 			m_State = ProtocolState::Status;
 			return action;
 
 		case HandshakeIntention::Login:
 			m_Handshake = packet;
-
 			if (packet.ProtocolVersion != m_ServerStatus.ProtocolVersion) {
-				action.OutboundPackets.emplace_back(
-					Packets::Login::Clientbound::Disconnect{
-						.ReasonJson = std::format(
-							R"({{"text":"Unsupported protocol version. Aurore requires protocol {}."}})",
-							m_ServerStatus.ProtocolVersion),
-					});
-
+				action.OutboundPackets.emplace_back(Packets::Login::Clientbound::Disconnect{
+					.ReasonJson = std::format(
+						R"({{"text":"Unsupported protocol version. Aurore requires protocol {}."}})",
+						m_ServerStatus.ProtocolVersion),
+				});
 				action.Disconnect = true;
 				m_LoginPhase = LoginPhase::Complete;
 				m_State = ProtocolState::Disconnected;
 				return action;
 			}
-
 			m_State = ProtocolState::Login;
 			return action;
 		}
@@ -134,17 +124,11 @@ namespace Aurore::Protocol {
 
 	ProtocolHandleResult ProtocolSession::HandleStatusPacket(const Packets::Status::Serverbound::Request& packet) {
 		(void)packet;
-
 		if (m_StatusPhase != StatusPhase::AwaitingRequest)
 			return std::unexpected(ProtocolError::UnexpectedPacket);
 
 		ProtocolAction action;
 		action.OutboundPackets.emplace_back(Packets::Status::Clientbound::Response{ .Status = m_ServerStatus });
-
-		/*
-			Construct the complete output before committing the phase
-			transition.
-		*/
 		m_StatusPhase = StatusPhase::AwaitingPing;
 		return action;
 	}
@@ -156,11 +140,6 @@ namespace Aurore::Protocol {
 		ProtocolAction action;
 		action.OutboundPackets.emplace_back(Packets::Status::Clientbound::Pong{ .Payload = packet.Payload });
 		action.Disconnect = true;
-
-		/*
-			The output packet is already owned by the action before the
-			session commits its terminal Status transition.
-		*/
 		m_StatusPhase = StatusPhase::Complete;
 		m_State = ProtocolState::Disconnected;
 		return action;
@@ -170,20 +149,14 @@ namespace Aurore::Protocol {
 		if (m_LoginPhase != LoginPhase::AwaitingStart)
 			return std::unexpected(ProtocolError::UnexpectedPacket);
 
-		const ProtocolRequestId request_id = AllocateRequestId();
+		const auto request_id = AllocateRequestId();
 		ProtocolAction action;
-
 		action.Requests.emplace_back(LoginStartRequest{
 			.Id = request_id,
 			.Username = packet.Username,
-			.PresentedProfileId = packet.PresentedProfileId
+			.PresentedProfileId = packet.PresentedProfileId,
 		});
 		action.RequireInboundBoundary = true;
-
-		/*
-			Commit the pending phase only after the complete Core request
-			has been constructed.
-		*/
 		m_PendingRequestId = request_id;
 		m_LoginPhase = LoginPhase::AwaitingCoreDecision;
 		return action;
@@ -195,10 +168,8 @@ namespace Aurore::Protocol {
 			return std::unexpected(ProtocolError::UnexpectedPacket);
 
 		const auto request_id = AllocateRequestId();
-
 		ProtocolAction action;
 		action.Requests.emplace_back(ConfigurationStartRequest{ .Id = request_id });
-
 		m_PendingRequestId = request_id;
 		m_LoginPhase = LoginPhase::Complete;
 		m_ConfigurationPhase = ConfigurationPhase::AwaitingBootstrap;
@@ -209,25 +180,13 @@ namespace Aurore::Protocol {
 	ProtocolHandleResult ProtocolSession::HandleConfigurationPacket(const Configuration::Serverbound::ClientInformation& packet) {
 		if (m_ConfigurationPhase == ConfigurationPhase::Complete)
 			return std::unexpected(ProtocolError::UnexpectedPacket);
-		ProtocolAction action;
-
-		/*
-			Client Information is independent of known-pack negotiation.
-			The newest complete value replaces the previous one.
-		*/
 		m_ClientInformation = packet;
-		return action;
+		return ProtocolAction{};
 	}
 
 	ProtocolHandleResult ProtocolSession::HandleConfigurationPacket(const Configuration::Serverbound::ClientBrand& packet) {
 		if (m_ConfigurationPhase == ConfigurationPhase::Complete)
 			return std::unexpected(ProtocolError::UnexpectedPacket);
-
-		/*
-			Client brand is informational and independent of the linear
-			Configuration negotiation. A later complete value replaces
-			the previous value, matching Client Information behavior.
-		*/
 		m_ClientBrand = packet.Brand;
 		return ProtocolAction{};
 	}
@@ -235,16 +194,6 @@ namespace Aurore::Protocol {
 	ProtocolHandleResult ProtocolSession::HandleConfigurationPacket(const Configuration::Serverbound::CustomPayload& packet) {
 		if (m_ConfigurationPhase == ConfigurationPhase::Complete)
 			return std::unexpected(ProtocolError::UnexpectedPacket);
-
-		/*
-			Unknown custom channels are structurally validated and bounded by the
-			packet decoder. Aurore currently has no plugin-channel subsystem, so
-			the payload is deliberately ignored without advancing Configuration.
-
-			When plugin messaging is implemented, this is the point at which the
-			payload should become a Core request rather than being dispatched
-			directly from Protocol.
-		*/
 		(void)packet;
 		return ProtocolAction{};
 	}
@@ -252,11 +201,11 @@ namespace Aurore::Protocol {
 	ProtocolHandleResult ProtocolSession::HandleConfigurationPacket(const Configuration::Serverbound::SelectKnownPacks& packet) {
 		if (m_ConfigurationPhase != ConfigurationPhase::AwaitingKnownPackSelection)
 			return std::unexpected(ProtocolError::UnexpectedPacket);
-
 		if (!m_ConfigurationPlan)
 			return std::unexpected(ProtocolError::MissingConfigurationPlan);
 
-		const auto selection = Configuration::ValidateKnownPackSelection(m_ConfigurationPlan->GetOfferedKnownPacks(), packet.Packs);
+		const auto selection = Configuration::ValidateKnownPackSelection(
+			m_ConfigurationPlan->GetOfferedKnownPacks(), packet.Packs);
 		if (!selection)
 			return std::unexpected(ProtocolError::InvalidKnownPackSelection);
 
@@ -268,9 +217,8 @@ namespace Aurore::Protocol {
 
 		ProtocolAction action;
 		action.OutboundPackets.reserve(frames->size());
-		for (auto& frame : *frames) {
+		for (auto& frame : *frames)
 			action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(frame) });
-		}
 
 		m_ConfigurationPhase = ConfigurationPhase::AwaitingFinishAcknowledgement;
 		return action;
@@ -278,10 +226,8 @@ namespace Aurore::Protocol {
 
 	ProtocolHandleResult ProtocolSession::HandleConfigurationPacket(const Configuration::Serverbound::FinishConfiguration& packet) {
 		(void)packet;
-
 		if (m_ConfigurationPhase != ConfigurationPhase::AwaitingFinishAcknowledgement)
 			return std::unexpected(ProtocolError::UnexpectedPacket);
-
 		if (!m_ConfigurationPlan)
 			return std::unexpected(ProtocolError::MissingConfigurationPlan);
 
@@ -290,24 +236,28 @@ namespace Aurore::Protocol {
 			return std::unexpected(ProtocolError::ConfigurationGenerationMismatch);
 
 		const auto request_id = AllocateRequestId();
-
 		ProtocolAction action;
 		action.Requests.emplace_back(ConfigurationCompleteRequest{ .Id = request_id, .Generation = generation });
-
-		/*
-			Do not accept Play-State packets until Core has admitted the
-			connection into the following lifecycle.
-		*/
 		action.RequireInboundBoundary = true;
-
 		m_PendingRequestId = request_id;
 		m_ConfigurationPhase = ConfigurationPhase::AwaitingPlayAdmission;
 		return action;
 	}
 
 	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::AcceptTeleportation& packet) {
-		(void)packet;
-		return ProtocolAction{};
+		ProtocolAction action;
+		action.Requests.emplace_back(TeleportAcknowledgedRequest{
+			.TeleportId = packet.TeleportId,
+		});
+		return action;
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::ChunkBatchReceived& packet) {
+		ProtocolAction action;
+		action.Requests.emplace_back(ChunkBatchFeedbackRequest{
+			.ChunksPerTick = packet.ChunksPerTick,
+		});
+		return action;
 	}
 
 	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::ClientTickEnd& packet) {
@@ -366,6 +316,14 @@ namespace Aurore::Protocol {
 		return action;
 	}
 
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::PlayerInput& packet) {
+		ProtocolAction action;
+		action.Requests.emplace_back(PlayerInputRequest{
+			.Flags = packet.Flags,
+		});
+		return action;
+	}
+
 	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::PlayerLoaded& packet) {
 		(void)packet;
 		ProtocolAction action;
@@ -378,14 +336,12 @@ namespace Aurore::Protocol {
 			return std::unexpected(ProtocolError::InvalidRequestResolution);
 
 		ProtocolAction action;
-		action.OutboundPackets.emplace_back(
-			Packets::Login::Clientbound::Success{
-				.ProfileId = resolution.ProfileId,
-				.Username = resolution.Username,
-				.Properties = resolution.Properties,
+		action.OutboundPackets.emplace_back(Packets::Login::Clientbound::Success{
+			.ProfileId = resolution.ProfileId,
+			.Username = resolution.Username,
+			.Properties = resolution.Properties,
 		});
 		m_PendingRequestId.reset();
-
 		m_LoginPhase = LoginPhase::AwaitingAcknowledgement;
 		return action;
 	}
@@ -395,14 +351,9 @@ namespace Aurore::Protocol {
 			return std::unexpected(ProtocolError::InvalidRequestResolution);
 
 		ProtocolAction action;
-		action.OutboundPackets.emplace_back(
-			Packets::Login::Clientbound::Disconnect{
-				.ReasonJson = resolution.ReasonJson
-		});
+		action.OutboundPackets.emplace_back(Packets::Login::Clientbound::Disconnect{ .ReasonJson = resolution.ReasonJson });
 		action.Disconnect = true;
-
 		m_PendingRequestId.reset();
-
 		m_LoginPhase = LoginPhase::Complete;
 		m_State = ProtocolState::Disconnected;
 		return action;
@@ -411,19 +362,18 @@ namespace Aurore::Protocol {
 	ProtocolHandleResult ProtocolSession::ResolveConfiguration(ConfigurationResolution resolution) {
 		return std::visit([this](auto&& value) -> ProtocolHandleResult {
 			using Resolution = std::remove_cvref_t<decltype(value)>;
-
 			if constexpr (std::is_same_v<Resolution, ConfigurationReadyResolution>)
 				return ResolveConfigurationReady(std::move(value));
 			else if constexpr (std::is_same_v<Resolution, ConfigurationAcceptedResolution>)
 				return ResolveConfigurationAccepted(value);
-			else return ResolveConfigurationRejected(value);
+			else
+				return ResolveConfigurationRejected(value);
 		}, std::move(resolution));
 	}
 
 	ProtocolHandleResult ProtocolSession::ResolveConfigurationReady(ConfigurationReadyResolution&& resolution) {
 		if (!MatchesPendingConfigurationRequest(resolution.Id, ConfigurationPhase::AwaitingBootstrap))
 			return std::unexpected(ProtocolError::InvalidRequestResolution);
-
 		if (!resolution.Plan.GetSnapshot() || resolution.Plan.GetGeneration() == Aurore::Util::NoRegistryGeneration)
 			return std::unexpected(ProtocolError::ConfigurationGenerationMismatch);
 
@@ -435,10 +385,8 @@ namespace Aurore::Protocol {
 
 		ProtocolAction action;
 		action.OutboundPackets.reserve(frames.size());
-
-		for (auto& frame : frames) {
+		for (auto& frame : frames)
 			action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(frame) });
-		}
 
 		m_ConfigurationPlan.emplace(std::move(resolution.Plan));
 		m_PendingRequestId.reset();
@@ -449,9 +397,10 @@ namespace Aurore::Protocol {
 	ProtocolHandleResult ProtocolSession::ResolveConfigurationAccepted(const ConfigurationAcceptedResolution& resolution) {
 		if (!MatchesPendingConfigurationRequest(resolution.Id, ConfigurationPhase::AwaitingPlayAdmission))
 			return std::unexpected(ProtocolError::InvalidRequestResolution);
-
 		if (!m_ConfigurationPlan || !m_ConfigurationPlan->GetSnapshot())
 			return std::unexpected(ProtocolError::MissingConfigurationPlan);
+		if (resolution.Admission.PlayerEntityId <= 0 || resolution.Admission.DimensionIdentifier.empty())
+			return std::unexpected(ProtocolError::PlayBootstrapFailed);
 
 		m_RegistrySnapshot = m_ConfigurationPlan->GetSnapshot();
 		if (m_RegistrySnapshot->GetGeneration() != m_ConfigurationPlan->GetGeneration()) {
@@ -459,45 +408,32 @@ namespace Aurore::Protocol {
 			return std::unexpected(ProtocolError::ConfigurationGenerationMismatch);
 		}
 
-		auto overworld = Aurore::Util::ResourceLocation::Parse("minecraft:overworld");
-		if (!overworld) {
+		auto dimension = Aurore::Util::ResourceLocation::Parse(resolution.Admission.DimensionIdentifier);
+		if (!dimension) {
 			m_RegistrySnapshot.reset();
 			return std::unexpected(ProtocolError::PlayBootstrapFailed);
 		}
 
 		const auto& dimension_types = m_RegistrySnapshot->GetDimensionTypes();
-		auto dimension_type_id = dimension_types.FindRuntimeId(*overworld);
-
-		/*
-			Synthetic protocol fixtures intentionally use a non-Minecraft key. A
-			single-entry snapshot is still unambiguous; production vanilla data
-			resolves minecraft:overworld by key rather than relying on ordering.
-		*/
+		auto dimension_type_id = dimension_types.FindRuntimeId(*dimension);
 		if (!dimension_type_id && dimension_types.Size() == 1)
 			dimension_type_id = dimension_types.GetEntries().front().RuntimeId;
-
 		if (!dimension_type_id) {
 			m_RegistrySnapshot.reset();
 			return std::unexpected(ProtocolError::PlayBootstrapFailed);
 		}
 
-		/*
-			First Light intentionally uses one temporary local-player entity id and
-			minimal distances. Step 3 replaces this placeholder with runtime player
-			ownership; Steps 4-5 provide the world and chunks referenced here.
-		*/
-		constexpr std::int32_t FirstLightPlayerId{ 1 };
 		constexpr std::int32_t FirstLightChunkRadius{ 2 };
 		constexpr std::int32_t FirstLightSimulationDistance{ 2 };
 		constexpr std::int32_t FirstLightTeleportId{ 1 };
 
 		ProtocolAction action;
-		action.OutboundPackets.reserve(2);
+		action.OutboundPackets.reserve(7u + resolution.Admission.InitialChunks.size());
 
 		auto login = Play::Clientbound::Encode(Play::Clientbound::Login{
-			.PlayerId = FirstLightPlayerId,
+			.PlayerId = resolution.Admission.PlayerEntityId,
 			.Hardcore = false,
-			.Levels = { *overworld },
+			.Levels = { *dimension },
 			.MaximumPlayers = m_ServerStatus.MaximumPlayers,
 			.ChunkRadius = FirstLightChunkRadius,
 			.SimulationDistance = FirstLightSimulationDistance,
@@ -506,7 +442,7 @@ namespace Aurore::Protocol {
 			.LimitedCrafting = false,
 			.SpawnInfo = Play::Clientbound::CommonSpawnInfo{
 				.DimensionType = *dimension_type_id,
-				.Dimension = *overworld,
+				.Dimension = *dimension,
 				.Seed = 0,
 				.GameModeValue = Play::GameMode::Creative,
 				.PreviousGameMode = -1,
@@ -514,26 +450,80 @@ namespace Aurore::Protocol {
 				.IsFlat = false,
 				.HasLastDeathLocation = false,
 				.PortalCooldown = 0,
-				.SeaLevel = 63,
+				.SeaLevel = resolution.Admission.SeaLevel,
 			},
 			.EnforcesSecureChat = false,
 		});
 
 		auto position = Play::Clientbound::Encode(Play::Clientbound::PlayerPosition{
 			.TeleportId = FirstLightTeleportId,
-			.X = 0.5,
-			.Y = 64.0,
-			.Z = 0.5,
+			.X = resolution.Admission.X,
+			.Y = resolution.Admission.Y,
+			.Z = resolution.Admission.Z,
 			.VelocityX = 0.0,
 			.VelocityY = 0.0,
 			.VelocityZ = 0.0,
-			.Yaw = 0.f,
-			.Pitch = 0.f,
+			.Yaw = resolution.Admission.Yaw,
+			.Pitch = resolution.Admission.Pitch,
 			.RelativeFlags = 0,
 		});
 
+		auto start_waiting = Play::Clientbound::Encode(
+			Play::Clientbound::GameEvent{
+				.Event = Play::Clientbound::GameEventType::StartWaitingForLevelChunks,
+				.Value = 0.0F,
+			});
+
 		action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(login) });
+		action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(start_waiting) });
 		action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(position) });
+
+		if (!resolution.Admission.InitialChunks.empty()) {
+			const auto& columns = resolution.Admission.InitialChunks;
+
+			if (columns.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+				m_RegistrySnapshot.reset();
+				return std::unexpected(ProtocolError::PlayBootstrapFailed);
+			}
+
+			std::vector<PacketFrame> chunks;
+			chunks.reserve(columns.size());
+			for (const auto& column : columns) {
+				if (m_RegistrySnapshot->GetBlocks().Find(column.AirBlock) == nullptr) {
+					m_RegistrySnapshot.reset();
+					return std::unexpected(ProtocolError::PlayBootstrapFailed);
+				}
+
+				auto chunk = EncodeLevelChunkWithLight(column, *m_RegistrySnapshot);
+				if (!chunk) {
+					m_RegistrySnapshot.reset();
+					return std::unexpected(chunk.error());
+				}
+				chunks.push_back(std::move(*chunk));
+			}
+
+			/* The last column is the spawn column; its neighbors precede it. */
+			const auto& center = columns.back();
+			auto cache_radius = Play::Clientbound::Encode(
+				Play::Clientbound::SetChunkCacheRadius{ .Radius = FirstLightChunkRadius });
+			auto cache_center = Play::Clientbound::Encode(
+				Play::Clientbound::SetChunkCacheCenter{
+					.ChunkX = center.X,
+					.ChunkZ = center.Z,
+				});
+			auto batch_start = Play::Clientbound::Encode(Play::Clientbound::ChunkBatchStart{});
+			auto batch_finished = Play::Clientbound::Encode(
+				Play::Clientbound::ChunkBatchFinished{
+					.BatchSize = static_cast<std::int32_t>(chunks.size()),
+				});
+
+			action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(cache_radius) });
+			action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(cache_center) });
+			action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(batch_start) });
+			for (auto& chunk : chunks)
+				action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(chunk) });
+			action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(batch_finished) });
+		}
 
 		m_ConfigurationPlan.reset();
 		m_PendingRequestId.reset();
@@ -548,14 +538,11 @@ namespace Aurore::Protocol {
 
 		ProtocolAction action;
 		action.Disconnect = true;
-
 		m_PendingRequestId.reset();
 		m_ConfigurationPlan.reset();
 		m_RegistrySnapshot.reset();
-
 		m_ConfigurationPhase = ConfigurationPhase::Complete;
 		m_State = ProtocolState::Disconnected;
-
 		return action;
 	}
 
@@ -573,4 +560,3 @@ namespace Aurore::Protocol {
 		return ProtocolRequestId{ m_NextRequestValue++ };
 	}
 }
-

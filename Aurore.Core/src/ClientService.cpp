@@ -3,23 +3,25 @@
 #include <Aurore/Core/logger/Log.hpp>
 
 #include <Aurore/Protocol/ProtocolDiagnostics.hpp>
+#include <Aurore/Protocol/PlayChunk.hpp>
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace {
 	std::string_view ClientDispositionName(Aurore::Core::ClientReceiveDisposition disposition) noexcept {
 		using Aurore::Core::ClientReceiveDisposition;
-
 		switch (disposition) {
 		case ClientReceiveDisposition::KeepOpen: return "KeepOpen";
 		case ClientReceiveDisposition::CloseAfterFlush: return "CloseAfterFlush";
@@ -34,25 +36,74 @@ namespace {
 			total += batch.Size();
 		return total;
 	}
+
+	/*
+		Vanilla 1.21.11 will not compile a new terrain section until its
+		eight neighboring chunk columns are both present and lit. The World
+		remains sparse: missing chunks are implicit air, not new stored chunks.
+	*/
+	std::optional<std::vector<Aurore::Protocol::PlayChunkColumn>> BuildInitialChunkColumns(
+		const Aurore::World::Dimension& dimension) {
+
+		constexpr Aurore::World::ChunkPosition center{ .X = 0, .Z = 0 };
+		if (dimension.FindChunk(center) == nullptr) return std::nullopt;
+
+		auto plains = Aurore::Util::ResourceLocation::Parse("minecraft:plains");
+		if (!plains) return std::nullopt;
+
+		std::vector<Aurore::Protocol::PlayChunkColumn> columns;
+		columns.reserve(9);
+
+		const auto build_column = [&](Aurore::World::ChunkPosition position) {
+			Aurore::Protocol::PlayChunkColumn column{
+				.X = position.X,
+				.Z = position.Z,
+				.MinimumY = dimension.GetMinimumY(),
+				.Height = dimension.GetHeight(),
+				.AirBlock = dimension.GetAirBlock(),
+				.Biome = *plains,
+			};
+
+			if (const auto* chunk = dimension.FindChunk(position)) {
+				const auto stored = chunk->GetStoredBlocks();
+				column.Blocks.reserve(stored.size());
+				for (const auto& block : stored) {
+					column.Blocks.push_back(Aurore::Protocol::PlayChunkBlock{
+						.X = block.Position.X,
+						.Y = block.Position.Y,
+						.Z = block.Position.Z,
+						.Block = block.Block,
+					});
+				}
+			}
+
+			columns.push_back(std::move(column));
+		};
+
+		/* Send neighbors first, then the actual platform (cache center). */
+		for (std::int32_t z = -1; z <= 1; ++z) {
+			for (std::int32_t x = -1; x <= 1; ++x) {
+				if (x == center.X && z == center.Z) continue;
+				build_column(Aurore::World::ChunkPosition{ .X = x, .Z = z });
+			}
+		}
+		build_column(center);
+
+		return columns;
+	}
 }
 
 namespace Aurore::Core {
 	ClientService::ClientService(Network::NetworkManager& network_manager, RegistrySnapshotStore& registry_snapshots, World::WorldManager& world_manager) noexcept
 		: m_NetworkManager(network_manager), m_RegistrySnapshots(registry_snapshots), m_WorldManager(world_manager) {}
 
-	bool ClientService::Initialize(ClientConfiguration client_configuration,
-		Protocol::ConfigurationSequencePolicy configuration_policy,
-		Protocol::Packets::Configuration::Limits configuration_limits,
-		Protocol::ServerStatus server_status) {
-
-		if (!m_ConnectionManager.SetConfiguration(std::move(client_configuration)))
-			return false;
+	bool ClientService::Initialize(ClientConfiguration client_configuration, Protocol::ConfigurationSequencePolicy configuration_policy, Protocol::Packets::Configuration::Limits configuration_limits, Protocol::ServerStatus server_status) {
+		if (!m_ConnectionManager.SetConfiguration(std::move(client_configuration))) return false;
 
 		m_ConfigurationPolicy = std::move(configuration_policy);
 		m_ConfigurationLimits = configuration_limits;
 		m_ServerStatus = std::move(server_status);
 		m_FatalNetworkFailure = false;
-
 		m_PlayerConnections.clear();
 		m_ConnectionManager.Clear();
 		return true;
@@ -61,10 +112,8 @@ namespace Aurore::Core {
 	Protocol::ServerStatus ClientService::BuildServerStatus() const {
 		auto status = m_ServerStatus;
 		const auto online_players = m_ConnectionManager.AuthenticatedCount();
-
-		status.OnlinePlayers = static_cast<std::int32_t>(std::min<std::size_t>(online_players,
-			static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())));
-
+		status.OnlinePlayers = static_cast<std::int32_t>(std::min<std::size_t>(
+			online_players, static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())));
 		return status;
 	}
 
@@ -77,6 +126,7 @@ namespace Aurore::Core {
 
 	void ClientService::HandleNetworkEvent(const Network::ConnectionOpenedEvent& event) {
 		auto open_result = m_ConnectionManager.Open(event.Connection, event.LocalEndpoint, event.RemoteEndpoint, BuildServerStatus());
+
 		if (!open_result) {
 			const auto error = open_result.error();
 			if (error == ClientError::CapacityExceeded) {
@@ -85,23 +135,19 @@ namespace Aurore::Core {
 			}
 			else {
 				AU_ERROR(LogCategory::Core, "Failed to register connection {} from {}:{}. Client error: {}",
-					event.Connection.Value, event.RemoteEndpoint.Address, event.RemoteEndpoint.Port,
-					static_cast<unsigned int>(error));
+					event.Connection.Value, event.RemoteEndpoint.Address, event.RemoteEndpoint.Port, static_cast<unsigned int>(error));
 			}
 
-			const auto close_result = m_NetworkManager.CloseImmediately(event.Connection,
-				error == ClientError::CapacityExceeded
-					? Network::ConnectionCloseReason::ApplicationRequested
-					: Network::ConnectionCloseReason::BackendFailure);
+			const auto close_result = m_NetworkManager.CloseImmediately(event.Connection, error == ClientError::CapacityExceeded ? Network::ConnectionCloseReason::ApplicationRequested : Network::ConnectionCloseReason::BackendFailure);
 			if (!close_result) {
 				AU_ERROR(LogCategory::Core, "Failed to close rejected connection {}. Network error: {}",
 					event.Connection.Value, static_cast<unsigned int>(close_result.error()));
 			}
 			return;
 		}
+
 		const auto& client = open_result->get();
-		AU_DEBUG(LogCategory::Core, "Accepted connection {} from {}:{}", client.GetConnectionId().Value,
-			client.GetRemoteEndpoint().Address, client.GetRemoteEndpoint().Port);
+		AU_DEBUG(LogCategory::Core, "Accepted connection {} from {}:{}", client.GetConnectionId().Value, client.GetRemoteEndpoint().Address, client.GetRemoteEndpoint().Port);
 	}
 
 	void ClientService::HandleNetworkEvent(const Network::BytesReceivedEvent& event) {
@@ -115,6 +161,7 @@ namespace Aurore::Core {
 			}
 			return;
 		}
+
 		if (client->IsCloseRequested() || !client->IsTransportOpen()) {
 			AU_WARN(LogCategory::Core, "Received data for connection {} after closure was requested", event.Connection.Value);
 			const auto close_result = m_NetworkManager.CloseImmediately(event.Connection, Network::ConnectionCloseReason::BackendFailure);
@@ -127,8 +174,7 @@ namespace Aurore::Core {
 
 		const auto state_before = client->GetProtocolState();
 		const auto buffered_before = client->GetProtocolConnection().BufferedBytes();
-		AU_TRACE(LogCategory::Protocol,
-			"Processing {} inbound transport bytes for connection {}. State: {}, buffered before: {}",
+		AU_TRACE(LogCategory::Protocol, "Processing {} inbound transport bytes for connection {}. State: {}, buffered before: {}",
 			event.Data.size(), event.Connection.Value, Protocol::GetProtocolStateName(state_before), buffered_before);
 
 		const auto bytes = std::span<const std::byte>{ event.Data.data(), event.Data.size() };
@@ -136,14 +182,14 @@ namespace Aurore::Core {
 		const auto state_after = client->GetProtocolState();
 		const auto buffered_after = client->GetProtocolConnection().BufferedBytes();
 
-		AU_TRACE(LogCategory::Protocol,
-			"Protocol receive completed for connection {}. State: {} -> {}, Buffered Bytes: {} -> {}, Requests: {}, Outbound Batches: {}, Outbound Bytes: {}, Disposition: {}, Failed: {}",
+		AU_TRACE(LogCategory::Protocol, "Protocol receive completed for connection {}. State: {} -> {}, Buffered Bytes: {} -> {}, Requests: {}, Outbound Batches: {}, Outbound Bytes: {}, Disposition: {}, Failed: {}",
 			event.Connection.Value, Protocol::GetProtocolStateName(state_before), Protocol::GetProtocolStateName(state_after), buffered_before, buffered_after,
 			receive_result.Requests.size(), receive_result.OutboundFrames.size(), TotalOutboundBytes(receive_result), ClientDispositionName(receive_result.Disposition), receive_result.HasError());
 
 		auto requests = std::move(receive_result.Requests);
 		if (!ApplyClientResult(*client, std::move(receive_result))) return;
-		for (const auto& request : requests)
+
+		for (const auto& request : requests) 
 			if (!HandleProtocolRequest(*client, request)) return;
 
 		const auto resume_result = m_NetworkManager.ResumeReceive(event.Connection);
@@ -163,7 +209,9 @@ namespace Aurore::Core {
 	void ClientService::HandleNetworkEvent(const Network::ConnectionClosedEvent& event) {
 		auto* client = m_ConnectionManager.Find(event.Connection);
 		if (client == nullptr) {
-			AU_WARN(LogCategory::Core, "Received close event for unknown connection {}: {}", event.Connection.Value, event.Detail);
+			AU_WARN(LogCategory::Core, "Received close event for unknown connection {}: {}",
+				event.Connection.Value, event.Detail);
+			RemoveWorldPlayer(event.Connection);
 			return;
 		}
 
@@ -189,27 +237,26 @@ namespace Aurore::Core {
 		AU_DEBUG(LogCategory::Core, "Connection {} from {}:{} closed: {}",
 			event.Connection.Value, client->GetRemoteEndpoint().Address,
 			client->GetRemoteEndpoint().Port, event.Detail);
+
+		RemoveWorldPlayer(event.Connection);
 		(void)m_ConnectionManager.Remove(event.Connection);
 	}
 
 	void ClientService::HandleNetworkEvent(const Network::NetworkFailureEvent& event) {
-		AU_ERROR(LogCategory::Core, "Network failure: {} (error code: {})", event.Message, static_cast<unsigned int>(event.Error));
+		AU_ERROR(LogCategory::Core, "Network failure: {} (error code: {})",
+			event.Message, static_cast<unsigned int>(event.Error));
 		if (event.Fatal) m_FatalNetworkFailure = true;
 	}
 
 	bool ClientService::ApplyClientResult(ClientConnection& client, ClientReceiveResult result) {
 		const auto connection = client.GetConnectionId();
 		if (result.HasError()) {
-			const auto error_name =
-				Protocol::GetProtocolConnectionErrorName(*result.ProtocolError);
-
+			const auto error_name = Protocol::GetProtocolConnectionErrorName(*result.ProtocolError);
 			if (result.FailureContext) {
 				const auto& context = *result.FailureContext;
-
-				AU_WARN(LogCategory::Protocol,
-					"Protocol processing failed for connection {}. Stage: {}, state: {}, packet: {}, packet payload bytes: {}, input bytes: {}, buffered inbound bytes: {}, error: {}",
-					connection.Value, Protocol::GetProtocolStageName(context.Stage), Protocol::GetProtocolStateName(context.State), Protocol::FormatPacketId(context.PacketId), context.PacketPayloadBytes,
-					context.InputBytes, context.BufferedInboundBytes, error_name);
+				AU_WARN(LogCategory::Protocol, "Protocol processing failed for connection {}. Stage: {}, state: {}, packet: {}, packet payload bytes: {}, input bytes: {}, buffered inbound bytes: {}, error: {}",
+					connection.Value, Protocol::GetProtocolStageName(context.Stage), Protocol::GetProtocolStateName(context.State), Protocol::FormatPacketId(context.PacketId),
+					context.PacketPayloadBytes, context.InputBytes, context.BufferedInboundBytes, error_name);
 			}
 			else {
 				AU_WARN(LogCategory::Protocol,
@@ -222,24 +269,25 @@ namespace Aurore::Core {
 			const auto frame_size = frame.Size();
 			const auto send_result = m_NetworkManager.QueueSend(connection, std::move(frame));
 			if (send_result) {
-				AU_TRACE(LogCategory::Protocol,
-					"Queued {} protocol bytes for connection {}",
+				AU_TRACE(LogCategory::Protocol, "Queued {} protocol bytes for connection {}",
 					frame_size, connection.Value);
 				continue;
 			}
 
 			AU_ERROR(LogCategory::Core, "Failed to queue protocol output for connection {}. Error: {}",
 				connection.Value, static_cast<unsigned int>(send_result.error()));
-
 			client.MarkCloseRequested(ClientCloseCause::TransportFailure);
 			const auto close_result = m_NetworkManager.CloseImmediately(connection, Network::ConnectionCloseReason::BackendFailure);
-			if (!close_result)
+			if (!close_result) {
 				AU_ERROR(LogCategory::Core, "Failed to close connection {} after send failure. Error: {}",
 					connection.Value, static_cast<unsigned int>(close_result.error()));
+			}
 			return false;
 		}
 
-		if (result.Disposition == ClientReceiveDisposition::KeepOpen) return !result.HasError();
+		if (result.Disposition == ClientReceiveDisposition::KeepOpen)
+			return !result.HasError();
+
 		RequestClientClose(client, result.Disposition, result.HasError() ? ClientCloseCause::ProtocolFailure : ClientCloseCause::ProtocolRequested);
 		return false;
 	}
@@ -268,9 +316,10 @@ namespace Aurore::Core {
 		if (disposition == ClientReceiveDisposition::CloseImmediately) return;
 
 		const auto immediate_result = m_NetworkManager.CloseImmediately(connection, Network::ConnectionCloseReason::BackendFailure);
-		if (!immediate_result)
+		if (!immediate_result) {
 			AU_ERROR(LogCategory::Core, "Failed to immediately close connection {} after graceful-close failure. Error: {}",
 				connection.Value, static_cast<unsigned int>(immediate_result.error()));
+		}
 	}
 
 	void ClientService::ProcessTimeouts(ClientConnection::TimePoint now) {
@@ -278,12 +327,11 @@ namespace Aurore::Core {
 		for (const auto& timeout : timeouts) {
 			auto* client = m_ConnectionManager.Find(timeout.Connection);
 			if (client == nullptr) continue;
-			AU_WARN(LogCategory::Core, "Closing timed-out client {} from {}:{}",
-				timeout.Connection.Value,
-				client->GetRemoteEndpoint().Address,
-				client->GetRemoteEndpoint().Port);
-			client->MarkCloseRequested(timeout.Cause);
 
+			AU_WARN(LogCategory::Core, "Closing timed-out client {} from {}:{}",
+				timeout.Connection.Value, client->GetRemoteEndpoint().Address, client->GetRemoteEndpoint().Port);
+
+			client->MarkCloseRequested(timeout.Cause);
 			const auto close_result = m_NetworkManager.CloseImmediately(timeout.Connection, Network::ConnectionCloseReason::IdleTimeout);
 			if (!close_result) {
 				AU_ERROR(LogCategory::Core, "Failed to close timed-out client {}. Error: {}",
@@ -302,13 +350,19 @@ namespace Aurore::Core {
 				return HandleConfigurationStartRequest(client, value);
 			else if constexpr (std::is_same_v<Request, Protocol::ConfigurationCompleteRequest>)
 				return HandleConfigurationCompleteRequest(client, value);
+			else if constexpr (std::is_same_v<Request, Protocol::TeleportAcknowledgedRequest>)
+				return HandleTeleportAcknowledgedRequest(client, value);
+			else if constexpr (std::is_same_v<Request, Protocol::ChunkBatchFeedbackRequest>)
+				return HandleChunkBatchFeedbackRequest(client, value);
 			else if constexpr (std::is_same_v<Request, Protocol::PlayerMovementRequest>)
 				return HandlePlayerMovementRequest(client, value);
+			else if constexpr (std::is_same_v<Request, Protocol::PlayerInputRequest>)
+				return HandlePlayerInputRequest(client, value);
 			else {
 				static_assert(std::is_same_v<Request, Protocol::PlayerLoadedRequest>);
 				return HandlePlayerLoadedRequest(client, value);
 			}
-			}, request);
+		}, request);
 	}
 
 	bool ClientService::HandleLoginStartRequest(ClientConnection& client, const Protocol::LoginStartRequest& request) {
@@ -330,11 +384,8 @@ namespace Aurore::Core {
 
 		auto admission = m_ConnectionManager.AdmitIdentity(connection, std::move(*identity));
 		if (!admission) {
-			AU_WARN(LogCategory::Core,
-				"Rejected Login request {} for connection {}. Admission error: {}",
-				request.Id.Value,
-				connection.Value,
-				static_cast<unsigned int>(admission.error()));
+			AU_WARN(LogCategory::Core, "Rejected Login request {} for connection {}. Admission error: {}",
+				request.Id.Value, connection.Value, static_cast<unsigned int>(admission.error()));
 			return reject_login(ClientLogin::BuildDisconnectReason(admission.error()));
 		}
 
@@ -386,10 +437,8 @@ namespace Aurore::Core {
 		auto plan = Protocol::ConfigurationSequenceBuilder::Build(snapshot, m_ConfigurationPolicy, m_ConfigurationLimits);
 		if (!plan) {
 			const auto& error = plan.error();
-			AU_ERROR(LogCategory::Protocol,
-				"Failed to build Configuration request {} for connection {}. Code: {}, stage: {}, generation: {}",
-				request.Id.Value, connection.Value, static_cast<unsigned int>(error.Code),
-				static_cast<unsigned int>(error.Stage), error.Generation);
+			AU_ERROR(LogCategory::Protocol, "Failed to build Configuration request {} for connection {}. Code: {}, stage: {}, generation: {}",
+				request.Id.Value, connection.Value, static_cast<unsigned int>(error.Code), static_cast<unsigned int>(error.Stage), error.Generation);
 
 			if (error.Key)
 				AU_ERROR(LogCategory::Protocol, "Configuration failure key: {}", error.Key->ToString());
@@ -400,7 +449,7 @@ namespace Aurore::Core {
 		auto result = client.ResolveConfiguration(Protocol::ConfigurationResolution{
 			Protocol::ConfigurationReadyResolution{
 				.Id = request.Id,
-				.Plan = std::move(*plan)
+				.Plan = std::move(*plan),
 			}
 		});
 
@@ -415,8 +464,7 @@ namespace Aurore::Core {
 			return false;
 		}
 
-		AU_DEBUG(LogCategory::Protocol,
-			"Started Configuration request {} for connection {} using registry generation {}",
+		AU_DEBUG(LogCategory::Protocol, "Started Configuration request {} for connection {} using registry generation {}",
 			request.Id.Value, connection.Value, generation);
 		return true;
 	}
@@ -440,18 +488,10 @@ namespace Aurore::Core {
 			&& m_WorldManager.GetOverworld() != nullptr;
 
 		if (!can_enter_play) {
-			AU_WARN(LogCategory::Protocol,
-				"Rejected Configuration completion request {} for connection {}. "
-				"Requested generation: {}, retained generation: {}, has identity: {}, "
-				"has client information: {}, world initialized: {}, has overworld: {}",
-				request.Id.Value, connection.Value, request.Generation, retained_generation,
-				identity.has_value(), has_client_information, m_WorldManager.IsInitialized(),
-				m_WorldManager.GetOverworld() != nullptr);
+			AU_WARN(LogCategory::Protocol, "Rejected Configuration completion request {} for connection {}. Requested generation: {}, retained generation: {}, has identity: {}, has client information: {}",
+				request.Id.Value, connection.Value, request.Generation, retained_generation, identity.has_value(), has_client_information);
 
-			auto result = client.ResolveConfiguration(Protocol::ConfigurationResolution{
-				Protocol::ConfigurationRejectedResolution{ .Id = request.Id }
-			});
-
+			auto result = client.ResolveConfiguration(Protocol::ConfigurationResolution{ Protocol::ConfigurationRejectedResolution{ .Id = request.Id } });
 			(void)m_ConnectionManager.ReleaseIdentity(connection);
 			(void)ApplyClientResult(client, std::move(result));
 			return false;
@@ -465,7 +505,15 @@ namespace Aurore::Core {
 		}
 
 		auto* overworld = m_WorldManager.GetOverworld();
-		World::PlayerPosition spawn_position{};
+		const auto& world_spawn = overworld->GetSpawnPosition();
+		World::PlayerPosition spawn_position{
+			.X = world_spawn.X,
+			.Y = world_spawn.Y,
+			.Z = world_spawn.Z,
+			.Yaw = world_spawn.Yaw,
+			.Pitch = world_spawn.Pitch,
+		};
+
 		auto* player = m_WorldManager.CreatePlayer(identity->UniqueId, identity->Username, *overworld, spawn_position);
 		if (player == nullptr) {
 			AU_ERROR(LogCategory::Player, "Failed to create world player for connection {}", connection.Value);
@@ -477,10 +525,22 @@ namespace Aurore::Core {
 		m_PlayerConnections.emplace(connection, player->GetEntityId());
 		const auto& position = player->GetPosition();
 
+		auto initial_chunks = BuildInitialChunkColumns(*overworld);
+		if (!initial_chunks) {
+			AU_ERROR(LogCategory::Player, "Cannot admit connection {} because the First Light chunk neighborhood could not be prepared", connection.Value);
+			RemoveWorldPlayer(connection);
+			(void)m_ConnectionManager.ReleaseIdentity(connection);
+			RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+			return false;
+		}
+
+		AU_DEBUG(LogCategory::Protocol, "Prepared First Light {}-chunk neighborhood for connection {} with {} platform blocks",
+			initial_chunks->size(), connection.Value, initial_chunks->back().Blocks.size());
+
 		auto result = client.ResolveConfiguration(Protocol::ConfigurationResolution{
 			Protocol::ConfigurationAcceptedResolution{
 				.Id = request.Id,
-				.Admission = Protocol::PlayAdmission {
+				.Admission = Protocol::PlayAdmission{
 					.PlayerEntityId = player->GetEntityId(),
 					.DimensionIdentifier = std::string(player->GetDimension().GetIdentifier()),
 					.X = position.X,
@@ -488,6 +548,8 @@ namespace Aurore::Core {
 					.Z = position.Z,
 					.Yaw = position.Yaw,
 					.Pitch = position.Pitch,
+					.SeaLevel = overworld->GetSeaLevel(),
+					.InitialChunks = std::move(*initial_chunks),
 				},
 			}
 		});
@@ -507,11 +569,8 @@ namespace Aurore::Core {
 
 		if (client.GetProtocolState() != Protocol::ProtocolState::Play
 			|| client.GetLifecycleState() != ClientLifecycleState::Play) {
-			AU_ERROR(LogCategory::Core,
-				"Configuration completion for connection {} did not transition the client into Play. Protocol state: {}, lifecycle state: {}",
-				connection.Value,
-				Protocol::GetProtocolStateName(client.GetProtocolState()),
-				static_cast<unsigned int>(client.GetLifecycleState()));
+			AU_ERROR(LogCategory::Core, "Configuration completion for connection {} did not transition the client into Play. Protocol state: {}, lifecycle state: {}",
+				connection.Value, Protocol::GetProtocolStateName(client.GetProtocolState()), static_cast<unsigned int>(client.GetLifecycleState()));
 
 			RemoveWorldPlayer(connection);
 			(void)m_ConnectionManager.ReleaseIdentity(connection);
@@ -527,6 +586,18 @@ namespace Aurore::Core {
 
 		AU_DEBUG(LogCategory::Protocol, "Configuration metadata for connection {}. Client Information: {}, Client Brand: {}, Brand Bytes: {}",
 			connection.Value, client_information.has_value(), client_brand.has_value(), client_brand ? client_brand->size() : 0);
+
+		return true;
+	}
+
+	bool ClientService::HandleTeleportAcknowledgedRequest(ClientConnection& client, const Protocol::TeleportAcknowledgedRequest& request) {
+		AU_DEBUG(LogCategory::Protocol, "Connection {} acknowledged player teleport {}", client.GetConnectionId().Value, request.TeleportId);
+		return true;
+	}
+
+	bool ClientService::HandleChunkBatchFeedbackRequest(ClientConnection& client, const Protocol::ChunkBatchFeedbackRequest& request) {
+		AU_DEBUG(LogCategory::Protocol, "Connection {} acknowledged chunk batch; requested {:.3f} chunks/tick",
+			client.GetConnectionId().Value, request.ChunksPerTick);
 
 		return true;
 	}
@@ -555,6 +626,23 @@ namespace Aurore::Core {
 			player->GetUsername(), client.GetConnectionId().Value);
 		RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
 		return false;
+	}
+
+	bool ClientService::HandlePlayerInputRequest(ClientConnection& client, const Protocol::PlayerInputRequest& request) {
+		if (client.GetProtocolState() != Protocol::ProtocolState::Play) {
+			RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+			return false;
+		}
+
+		const auto& flags = request.Flags;
+		AU_TRACE(LogCategory::Protocol, "Player Input from connection {}: forward={}, backward={}, left={}, right={}, jump={}, shift={}, sprint={}",
+			client.GetConnectionId().Value, flags.Forward, flags.Backward, flags.Left, flags.Right, flags.Jump, flags.Shift, flags.Sprint);
+
+		/*
+			First Light movement remains authoritative through the normal Move
+			Player packet family. Player Input is accepted and observed here.
+		*/
+		return true;
 	}
 
 	bool ClientService::HandlePlayerLoadedRequest(ClientConnection& client, const Protocol::PlayerLoadedRequest& request) {

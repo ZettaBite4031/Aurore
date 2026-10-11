@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 namespace Aurore::World {
 	struct ChunkPosition final {
@@ -32,29 +33,30 @@ namespace Aurore::World {
 		auto operator<=>(const BlockPosition&) const noexcept = default;
 	};
 
+	struct StoredBlock final {
+		LocalBlockPosition Position;
+		Aurore::Util::ResourceLocation Block;
+	};
+
 	class Chunk final {
 	public:
 		static constexpr std::int32_t Width{ 16 };
 
-		Chunk(ChunkPosition position,
-			std::int32_t minimum_y,
-			std::int32_t height,
-			Aurore::Util::ResourceLocation air_block);
+		Chunk(ChunkPosition position, std::int32_t minimum_y, std::int32_t height, Aurore::Util::ResourceLocation air_block);
 
 		Chunk(const Chunk&) = delete;
 		Chunk& operator=(const Chunk&) = delete;
 		Chunk(Chunk&&) noexcept = default;
 		Chunk& operator=(Chunk&&) noexcept = default;
 
-		[[nodiscard]] bool SetBlock(LocalBlockPosition position,
-			Aurore::Util::ResourceLocation block);
+		[[nodiscard]] bool SetBlock(LocalBlockPosition position, Aurore::Util::ResourceLocation block);
 
-		[[nodiscard]] const Aurore::Util::ResourceLocation&
-			GetBlock(LocalBlockPosition position) const noexcept;
+		[[nodiscard]] const Aurore::Util::ResourceLocation& GetBlock(LocalBlockPosition position) const noexcept;
 
 		[[nodiscard]] bool ContainsY(std::int32_t y) const noexcept;
 		[[nodiscard]] bool Empty() const noexcept;
 		[[nodiscard]] std::size_t StoredBlockCount() const noexcept;
+		[[nodiscard]] std::vector<StoredBlock> GetStoredBlocks() const;
 		[[nodiscard]] ChunkPosition GetPosition() const noexcept;
 		[[nodiscard]] std::int32_t GetMinimumY() const noexcept;
 		[[nodiscard]] std::int32_t GetHeight() const noexcept;
