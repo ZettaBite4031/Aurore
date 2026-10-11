@@ -2,6 +2,8 @@
 
 #include <Aurore/Util/ByteBuffer.hpp>
 
+#include <bit>
+
 namespace Aurore::Protocol::Packets::Play {
 	namespace {
 		[[nodiscard]] MovementFlags DecodeMovementFlags(std::uint8_t value) noexcept {
@@ -12,6 +14,72 @@ namespace Aurore::Protocol::Packets::Play {
 			if (!frame.Payload.empty())
 				return std::unexpected(ProtocolError::TrailingPacketData);
 			return packet;
+		}
+
+		void EncodeCommonSpawnInfo(Aurore::Util::ByteBuffer& payload, const Clientbound::CommonSpawnInfo& info) {
+			payload.WriteVarInt(static_cast<std::int32_t>(info.DimensionType));
+			payload.WriteString(info.Dimension.ToString());
+			payload.WriteInt64(info.Seed);
+			payload.WriteUnsignedByte(static_cast<std::uint8_t>(info.GameModeValue));
+			payload.WriteUnsignedByte(std::bit_cast<std::uint8_t>(info.PreviousGameMode));
+			payload.WriteBool(info.IsDebug);
+			payload.WriteBool(info.IsFlat);
+
+			/*
+				GlobalPos is deliberately absent for First Light. The boolean is
+				the Optional<GlobalPos> discriminator used by vanilla.
+			*/
+			payload.WriteBool(info.HasLastDeathLocation);
+			payload.WriteVarInt(info.PortalCooldown);
+			payload.WriteVarInt(info.SeaLevel);
+		}
+	}
+
+	namespace Clientbound {
+		PacketFrame Encode(const Login& packet) {
+			Aurore::Util::ByteBuffer payload;
+
+			payload.WriteInt32(packet.PlayerId);
+			payload.WriteBool(packet.Hardcore);
+			payload.WriteVarInt(static_cast<std::int32_t>(packet.Levels.size()));
+			for (const auto& level : packet.Levels)
+				payload.WriteString(level.ToString());
+
+			payload.WriteVarInt(packet.MaximumPlayers);
+			payload.WriteVarInt(packet.ChunkRadius);
+			payload.WriteVarInt(packet.SimulationDistance);
+			payload.WriteBool(packet.ReducedDebugInfo);
+			payload.WriteBool(packet.ShowDeathScreen);
+			payload.WriteBool(packet.LimitedCrafting);
+			EncodeCommonSpawnInfo(payload, packet.SpawnInfo);
+			payload.WriteBool(packet.EnforcesSecureChat);
+
+			return PacketFrame{
+				.PacketId = LoginPacketId,
+				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
+			};
+		}
+
+		PacketFrame Encode(const PlayerPosition& packet) {
+			Aurore::Util::ByteBuffer payload;
+
+			payload.WriteVarInt(packet.TeleportId);
+			payload.WriteDouble(packet.X);
+			payload.WriteDouble(packet.Y);
+			payload.WriteDouble(packet.Z);
+			payload.WriteDouble(packet.VelocityX);
+			payload.WriteDouble(packet.VelocityY);
+			payload.WriteDouble(packet.VelocityZ);
+			payload.WriteFloat(packet.Yaw);
+			payload.WriteFloat(packet.Pitch);
+
+			/* Relative.SET_STREAM_CODEC is a fixed-width network INT. */
+			payload.WriteInt32(static_cast<std::int32_t>(packet.RelativeFlags));
+
+			return PacketFrame{
+				.PacketId = PlayerPositionPacketId,
+				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
+			};
 		}
 	}
 

@@ -32,7 +32,7 @@ add_library(
     include/Aurore/Protocol/Packets/Configuration.hpp
     include/Aurore/Protocol/Packets/Handshake.hpp
     include/Aurore/Protocol/Packets/Login.hpp
- "src/Packets/Play.cpp"    include/Aurore/Protocol/Packets/Status.hpp
+    include/Aurore/Protocol/Packets/Status.hpp
     include/Aurore/Protocol/Packets/Play.hpp
 )
 

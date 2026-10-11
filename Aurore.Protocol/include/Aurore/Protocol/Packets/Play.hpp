@@ -3,11 +3,15 @@
 #include <Aurore/Protocol/PacketFrame.hpp>
 #include <Aurore/Protocol/ProtocolTypes.hpp>
 
+#include <Aurore/Util/Registry.hpp>
+#include <Aurore/Util/ResourceLocation.hpp>
+
 #include <array>
 #include <compare>
 #include <cstdint>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace Aurore::Protocol::Packets::Play {
 	inline constexpr std::int32_t TargetProtocolVersion{ 774 };
@@ -31,6 +35,72 @@ namespace Aurore::Protocol::Packets::Play {
 
 		auto operator<=>(const MovementFlags&) const noexcept = default;
 	};
+
+	enum class GameMode : std::int8_t {
+		Survival = 0,
+		Creative = 1,
+		Adventure = 2,
+		Spectator = 3,
+	};
+
+	namespace Clientbound {
+		inline constexpr std::int32_t LoginPacketId{ 0x30 };
+		inline constexpr std::int32_t PlayerPositionPacketId{ 0x46 };
+
+		inline constexpr std::array PacketDescriptors{
+			PacketDescriptor{ LoginPacketId, "login", Direction::Clientbound },
+			PacketDescriptor{ PlayerPositionPacketId, "login", Direction::Clientbound },
+		};
+
+		struct CommonSpawnInfo final {
+			Aurore::Util::RegistryRuntimeId DimensionType{ 0 };
+			Aurore::Util::ResourceLocation Dimension;
+			std::int64_t Seed{ 0 };
+			GameMode GameModeValue{ GameMode::Creative };
+			std::int8_t PreviousGameMode{ -1 };
+			bool IsDebug{ false };
+			bool IsFlat{ false };
+			bool HasLastDeathLocation{ false };
+			std::int32_t PortalCooldown{ 0 };
+			std::int32_t SeaLevel{ 63 };
+
+			bool operator==(const CommonSpawnInfo&) const noexcept = default;
+		};
+
+		struct Login final {
+			std::int32_t PlayerId{ 0 };
+			bool Hardcore{ false };
+			std::vector<Aurore::Util::ResourceLocation> Levels;
+			std::int32_t MaximumPlayers{ 20 };
+			std::int32_t ChunkRadius{ 2 };
+			std::int32_t SimulationDistance{ 2 };
+			bool ReducedDebugInfo{ false };
+			bool ShowDeathScreen{ true };
+			bool LimitedCrafting{ false };
+			CommonSpawnInfo SpawnInfo;
+			bool EnforcesSecureChat{ false };
+
+			bool operator==(const Login&) const noexcept = default;
+		};
+
+		struct PlayerPosition final {
+			std::int32_t TeleportId{ 1 };
+			double X{ 0.0 };
+			double Y{ 64.0 };
+			double Z{ 0.0 };
+			double VelocityX{ 0.0 };
+			double VelocityY{ 0.0 };
+			double VelocityZ{ 0.0 };
+			float Yaw{ 0.0F };
+			float Pitch{ 0.0F };
+			std::uint32_t RelativeFlags{ 0 };
+
+			bool operator==(const PlayerPosition&) const noexcept = default;
+		};
+
+		[[nodiscard]] PacketFrame Encode(const Login& packet);
+		[[nodiscard]] PacketFrame Encode(const PlayerPosition& packet);
+	}
 
 	namespace Serverbound {
 		inline constexpr std::int32_t AcceptTeleportationPacketId{ 0x00 };

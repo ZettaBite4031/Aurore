@@ -453,13 +453,86 @@ namespace Aurore::Protocol {
 			return std::unexpected(ProtocolError::ConfigurationGenerationMismatch);
 		}
 
+		auto overworld = Aurore::Util::ResourceLocation::Parse("minecraft:overworld");
+		if (!overworld) {
+			m_RegistrySnapshot.reset();
+			return std::unexpected(ProtocolError::PlayBootstrapFailed);
+		}
+
+		const auto& dimension_types = m_RegistrySnapshot->GetDimensionTypes();
+		auto dimension_type_id = dimension_types.FindRuntimeId(*overworld);
+
+		/*
+			Synthetic protocol fixtures intentionally use a non-Minecraft key. A
+			single-entry snapshot is still unambiguous; production vanilla data
+			resolves minecraft:overworld by key rather than relying on ordering.
+		*/
+		if (!dimension_type_id && dimension_types.Size() == 1)
+			dimension_type_id = dimension_types.GetEntries().front().RuntimeId;
+
+		if (!dimension_type_id) {
+			m_RegistrySnapshot.reset();
+			return std::unexpected(ProtocolError::PlayBootstrapFailed);
+		}
+
+		/*
+			First Light intentionally uses one temporary local-player entity id and
+			minimal distances. Step 3 replaces this placeholder with runtime player
+			ownership; Steps 4-5 provide the world and chunks referenced here.
+		*/
+		constexpr std::int32_t FirstLightPlayerId{ 1 };
+		constexpr std::int32_t FirstLightChunkRadius{ 2 };
+		constexpr std::int32_t FirstLightSimulationDistance{ 2 };
+		constexpr std::int32_t FirstLightTeleportId{ 1 };
+
 		ProtocolAction action;
+		action.OutboundPackets.reserve(2);
+
+		auto login = Play::Clientbound::Encode(Play::Clientbound::Login{
+			.PlayerId = FirstLightPlayerId,
+			.Hardcore = false,
+			.Levels = { *overworld },
+			.MaximumPlayers = m_ServerStatus.MaximumPlayers,
+			.ChunkRadius = FirstLightChunkRadius,
+			.SimulationDistance = FirstLightSimulationDistance,
+			.ReducedDebugInfo = false,
+			.ShowDeathScreen = true,
+			.LimitedCrafting = false,
+			.SpawnInfo = Play::Clientbound::CommonSpawnInfo{
+				.DimensionType = *dimension_type_id,
+				.Dimension = *overworld,
+				.Seed = 0,
+				.GameModeValue = Play::GameMode::Creative,
+				.PreviousGameMode = -1,
+				.IsDebug = false,
+				.IsFlat = false,
+				.HasLastDeathLocation = false,
+				.PortalCooldown = 0,
+				.SeaLevel = 63,
+			},
+			.EnforcesSecureChat = false,
+		});
+
+		auto position = Play::Clientbound::Encode(Play::Clientbound::PlayerPosition{
+			.TeleportId = FirstLightTeleportId,
+			.X = 0.5,
+			.Y = 64.0,
+			.Z = 0.5,
+			.VelocityX = 0.0,
+			.VelocityY = 0.0,
+			.VelocityZ = 0.0,
+			.Yaw = 0.f,
+			.Pitch = 0.f,
+			.RelativeFlags = 0,
+		});
+
+		action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(login) });
+		action.OutboundPackets.emplace_back(PreparedPacketFrame{ .Frame = std::move(position) });
 
 		m_ConfigurationPlan.reset();
 		m_PendingRequestId.reset();
 		m_ConfigurationPhase = ConfigurationPhase::Complete;
 		m_State = ProtocolState::Play;
-
 		return action;
 	}
 

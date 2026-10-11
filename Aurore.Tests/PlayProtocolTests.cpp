@@ -43,6 +43,7 @@ namespace Aurore::Tests {
 		using Aurore::Protocol::LoginAcceptedResolution;
 		using Aurore::Protocol::LoginStartRequest;
 		using Aurore::Protocol::PacketFrame;
+		using Aurore::Protocol::PreparedPacketFrame;
 		using Aurore::Protocol::ProtocolError;
 		using Aurore::Protocol::ProtocolRequest;
 		using Aurore::Protocol::ProtocolSession;
@@ -103,7 +104,12 @@ namespace Aurore::Tests {
 			return std::get<TRequest>(request);
 		}
 
-		[[nodiscard]] ProtocolSession EnterPlay() {
+		struct PlayAdmissionFixture final {
+			ProtocolSession Session;
+			Aurore::Protocol::ProtocolAction Admission;
+		};
+
+		[[nodiscard]] PlayAdmissionFixture EnterPlayWithAdmission() {
 			ProtocolSession session;
 
 			ByteBuffer handshake_payload;
@@ -125,12 +131,14 @@ namespace Aurore::Tests {
 				throw std::runtime_error("Play fixture Login start failed.");
 
 			const auto login_request = GetRequest<LoginStartRequest>(login->Requests.front());
-			auto login_resolution = session.ResolveLogin(Aurore::Protocol::LoginResolution{ LoginAcceptedResolution{
-				.Id = login_request.Id,
-				.ProfileId = Uuid::FromOfflinePlayerName("PlayerOne"),
-				.Username = "PlayerOne",
-				.Properties = {},
-			} });
+			auto login_resolution = session.ResolveLogin(Aurore::Protocol::LoginResolution{
+				LoginAcceptedResolution{
+					.Id = login_request.Id,
+					.ProfileId = Uuid::FromOfflinePlayerName("PlayerOne"),
+					.Username = "PlayerOne",
+					.Properties = {},
+				}
+			});
 			if (!login_resolution)
 				throw std::runtime_error("Play fixture Login resolution failed.");
 
@@ -172,11 +180,27 @@ namespace Aurore::Tests {
 			if (!accepted || session.GetState() != ProtocolState::Play)
 				throw std::runtime_error("Play fixture admission failed.");
 
-			return session;
+			return PlayAdmissionFixture{
+				.Session = std::move(session),
+				.Admission = std::move(*accepted),
+			};
+		}
+
+		[[nodiscard]] ProtocolSession EnterPlay() {
+			return std::move(EnterPlayWithAdmission().Session);
+		}
+
+		[[nodiscard]] const PacketFrame& GetPreparedFrame(
+			const Aurore::Protocol::ClientboundPacket& packet) {
+			if (!std::holds_alternative<PreparedPacketFrame>(packet))
+				throw std::runtime_error("Expected prepared Play frame.");
+			return std::get<PreparedPacketFrame>(packet).Frame;
 		}
 	}
 
 	TEST(PlayProtocolTests, UsesProtocol774FirstLightPacketIds) {
+		EXPECT_EQ(Play::Clientbound::LoginPacketId, 0x30);
+		EXPECT_EQ(Play::Clientbound::PlayerPositionPacketId, 0x46);
 		EXPECT_EQ(Play::Serverbound::AcceptTeleportationPacketId, 0x00);
 		EXPECT_EQ(Play::Serverbound::ClientTickEndPacketId, 0x0C);
 		EXPECT_EQ(Play::Serverbound::KeepAlivePacketId, 0x1B);
@@ -187,14 +211,92 @@ namespace Aurore::Tests {
 		EXPECT_EQ(Play::Serverbound::PlayerLoadedPacketId, 0x2B);
 	}
 
+	TEST(PlayProtocolTests, EncodesLoginBootstrapPacket) {
+		const auto overworld = ParseRequired("minecraft:overworld");
+		const auto frame = Play::Clientbound::Encode(Play::Clientbound::Login{
+			.PlayerId = 7,
+			.Hardcore = false,
+			.Levels = { overworld },
+			.MaximumPlayers = 20,
+			.ChunkRadius = 2,
+			.SimulationDistance = 2,
+			.ReducedDebugInfo = false,
+			.ShowDeathScreen = true,
+			.LimitedCrafting = false,
+			.SpawnInfo = Play::Clientbound::CommonSpawnInfo{
+				.DimensionType = 0,
+				.Dimension = overworld,
+				.Seed = 0,
+				.GameModeValue = Play::GameMode::Creative,
+				.PreviousGameMode = -1,
+				.IsDebug = false,
+				.IsFlat = false,
+				.HasLastDeathLocation = false,
+				.PortalCooldown = 0,
+				.SeaLevel = 63,
+			},
+			.EnforcesSecureChat = false,
+		});
+
+		EXPECT_EQ(frame.PacketId, Play::Clientbound::LoginPacketId);
+		ByteReader reader(frame.Payload);
+		ASSERT_EQ(*reader.ReadInt32(), 7);
+		ASSERT_FALSE(*reader.ReadBool());
+		ASSERT_EQ(*reader.ReadVarInt(), 1);
+		ASSERT_EQ(*reader.ReadString(128), "minecraft:overworld");
+		ASSERT_EQ(*reader.ReadVarInt(), 20);
+		ASSERT_EQ(*reader.ReadVarInt(), 2);
+		ASSERT_EQ(*reader.ReadVarInt(), 2);
+		ASSERT_FALSE(*reader.ReadBool());
+		ASSERT_TRUE(*reader.ReadBool());
+		ASSERT_FALSE(*reader.ReadBool());
+		ASSERT_EQ(*reader.ReadVarInt(), 0);
+		ASSERT_EQ(*reader.ReadString(128), "minecraft:overworld");
+		ASSERT_EQ(*reader.ReadInt64(), 0);
+		ASSERT_EQ(*reader.ReadUnsignedByte(), 1);
+		ASSERT_EQ(*reader.ReadUnsignedByte(), 0xFF);
+		ASSERT_FALSE(*reader.ReadBool());
+		ASSERT_FALSE(*reader.ReadBool());
+		ASSERT_FALSE(*reader.ReadBool());
+		ASSERT_EQ(*reader.ReadVarInt(), 0);
+		ASSERT_EQ(*reader.ReadVarInt(), 63);
+		ASSERT_FALSE(*reader.ReadBool());
+		EXPECT_TRUE(reader.Empty());
+	}
+
+	TEST(PlayProtocolTests, EncodesInitialPlayerPositionPacket) {
+		const auto frame = Play::Clientbound::Encode(Play::Clientbound::PlayerPosition{
+			.TeleportId = 1,
+			.X = 0.5,
+			.Y = 64.0,
+			.Z = 0.5,
+			.VelocityX = 0.0,
+			.VelocityY = 0.0,
+			.VelocityZ = 0.0,
+			.Yaw = 0.0F,
+			.Pitch = 0.0F,
+			.RelativeFlags = 0,
+		});
+
+		EXPECT_EQ(frame.PacketId, Play::Clientbound::PlayerPositionPacketId);
+		ByteReader reader(frame.Payload);
+		ASSERT_EQ(*reader.ReadVarInt(), 1);
+		EXPECT_DOUBLE_EQ(*reader.ReadDouble(), 0.5);
+		EXPECT_DOUBLE_EQ(*reader.ReadDouble(), 64.0);
+		EXPECT_DOUBLE_EQ(*reader.ReadDouble(), 0.5);
+		EXPECT_DOUBLE_EQ(*reader.ReadDouble(), 0.0);
+		EXPECT_DOUBLE_EQ(*reader.ReadDouble(), 0.0);
+		EXPECT_DOUBLE_EQ(*reader.ReadDouble(), 0.0);
+		EXPECT_FLOAT_EQ(*reader.ReadFloat(), 0.0F);
+		EXPECT_FLOAT_EQ(*reader.ReadFloat(), 0.0F);
+		EXPECT_EQ(*reader.ReadInt32(), 0);
+		EXPECT_TRUE(reader.Empty());
+	}
+
 	TEST(PlayProtocolTests, DecodesTeleportAcknowledgement) {
 		ByteBuffer payload;
 		payload.WriteVarInt(42);
-
-		const auto result = Play::Serverbound::Decode(MakeFrame(
-			Play::Serverbound::AcceptTeleportationPacketId,
-			payload));
-
+		const auto result = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::AcceptTeleportationPacketId, payload));
 		ASSERT_TRUE(result.has_value());
 		ASSERT_TRUE(std::holds_alternative<Play::Serverbound::AcceptTeleportation>(*result));
 		EXPECT_EQ(std::get<Play::Serverbound::AcceptTeleportation>(*result).TeleportId, 42);
@@ -203,11 +305,7 @@ namespace Aurore::Tests {
 	TEST(PlayProtocolTests, DecodesKeepAliveResponse) {
 		ByteBuffer payload;
 		payload.WriteInt64(-1234567890123LL);
-
-		const auto result = Play::Serverbound::Decode(MakeFrame(
-			Play::Serverbound::KeepAlivePacketId,
-			payload));
-
+		const auto result = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::KeepAlivePacketId, payload));
 		ASSERT_TRUE(result.has_value());
 		ASSERT_TRUE(std::holds_alternative<Play::Serverbound::KeepAlive>(*result));
 		EXPECT_EQ(std::get<Play::Serverbound::KeepAlive>(*result).Id, -1234567890123LL);
@@ -219,11 +317,7 @@ namespace Aurore::Tests {
 		payload.WriteDouble(64.0);
 		payload.WriteDouble(-7.25);
 		payload.WriteUnsignedByte(0x03);
-
-		const auto result = Play::Serverbound::Decode(MakeFrame(
-			Play::Serverbound::MovePlayerPositionPacketId,
-			payload));
-
+		const auto result = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::MovePlayerPositionPacketId, payload));
 		ASSERT_TRUE(result.has_value());
 		const auto& packet = std::get<Play::Serverbound::MovePlayerPosition>(*result);
 		EXPECT_DOUBLE_EQ(packet.X, 12.5);
@@ -241,11 +335,7 @@ namespace Aurore::Tests {
 		payload.WriteFloat(90.0F);
 		payload.WriteFloat(-15.0F);
 		payload.WriteUnsignedByte(0x01);
-
-		const auto result = Play::Serverbound::Decode(MakeFrame(
-			Play::Serverbound::MovePlayerPositionRotationPacketId,
-			payload));
-
+		const auto result = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::MovePlayerPositionRotationPacketId, payload));
 		ASSERT_TRUE(result.has_value());
 		const auto& packet = std::get<Play::Serverbound::MovePlayerPositionRotation>(*result);
 		EXPECT_DOUBLE_EQ(packet.X, 1.0);
@@ -262,11 +352,7 @@ namespace Aurore::Tests {
 		payload.WriteFloat(180.0F);
 		payload.WriteFloat(20.0F);
 		payload.WriteUnsignedByte(0x02);
-
-		const auto result = Play::Serverbound::Decode(MakeFrame(
-			Play::Serverbound::MovePlayerRotationPacketId,
-			payload));
-
+		const auto result = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::MovePlayerRotationPacketId, payload));
 		ASSERT_TRUE(result.has_value());
 		const auto& packet = std::get<Play::Serverbound::MovePlayerRotation>(*result);
 		EXPECT_FLOAT_EQ(packet.Yaw, 180.0F);
@@ -278,11 +364,7 @@ namespace Aurore::Tests {
 	TEST(PlayProtocolTests, DecodesStatusOnlyMovement) {
 		ByteBuffer payload;
 		payload.WriteUnsignedByte(0x00);
-
-		const auto result = Play::Serverbound::Decode(MakeFrame(
-			Play::Serverbound::MovePlayerStatusOnlyPacketId,
-			payload));
-
+		const auto result = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::MovePlayerStatusOnlyPacketId, payload));
 		ASSERT_TRUE(result.has_value());
 		const auto& packet = std::get<Play::Serverbound::MovePlayerStatusOnly>(*result);
 		EXPECT_FALSE(packet.Flags.OnGround);
@@ -290,11 +372,8 @@ namespace Aurore::Tests {
 	}
 
 	TEST(PlayProtocolTests, AcceptsEmptyTickEndAndPlayerLoaded) {
-		const auto tick_end = Play::Serverbound::Decode(MakeFrame(
-			Play::Serverbound::ClientTickEndPacketId));
-		const auto player_loaded = Play::Serverbound::Decode(MakeFrame(
-			Play::Serverbound::PlayerLoadedPacketId));
-
+		const auto tick_end = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::ClientTickEndPacketId));
+		const auto player_loaded = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::PlayerLoadedPacketId));
 		ASSERT_TRUE(tick_end.has_value());
 		ASSERT_TRUE(player_loaded.has_value());
 		EXPECT_TRUE(std::holds_alternative<Play::Serverbound::ClientTickEnd>(*tick_end));
@@ -304,11 +383,7 @@ namespace Aurore::Tests {
 	TEST(PlayProtocolTests, RejectsTrailingDataForEmptyPackets) {
 		ByteBuffer payload;
 		payload.WriteUnsignedByte(0xAA);
-
-		const auto result = Play::Serverbound::Decode(MakeFrame(
-			Play::Serverbound::ClientTickEndPacketId,
-			payload));
-
+		const auto result = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::ClientTickEndPacketId, payload));
 		ASSERT_FALSE(result.has_value());
 		EXPECT_EQ(result.error(), ProtocolError::TrailingPacketData);
 	}
@@ -316,28 +391,28 @@ namespace Aurore::Tests {
 	TEST(PlayProtocolTests, RejectsTruncatedMovementPacket) {
 		ByteBuffer payload;
 		payload.WriteDouble(1.0);
-
-		const auto result = Play::Serverbound::Decode(MakeFrame(
-			Play::Serverbound::MovePlayerPositionPacketId,
-			payload));
-
+		const auto result = Play::Serverbound::Decode(MakeFrame(Play::Serverbound::MovePlayerPositionPacketId, payload));
 		ASSERT_FALSE(result.has_value());
 		EXPECT_EQ(result.error(), ProtocolError::MalformedPacket);
 	}
 
 	TEST(PlayProtocolTests, RejectsUnknownPacketId) {
 		const auto result = Play::Serverbound::Decode(MakeFrame(0x7F));
-
 		ASSERT_FALSE(result.has_value());
 		EXPECT_EQ(result.error(), ProtocolError::UnexpectedPacket);
 	}
 
+	TEST(PlayProtocolSessionTests, AdmissionEmitsMinimalBootstrapSequence) {
+		auto fixture = EnterPlayWithAdmission();
+		ASSERT_EQ(fixture.Admission.OutboundPackets.size(), 2u);
+		EXPECT_EQ(GetPreparedFrame(fixture.Admission.OutboundPackets[0]).PacketId, Play::Clientbound::LoginPacketId);
+		EXPECT_EQ(GetPreparedFrame(fixture.Admission.OutboundPackets[1]).PacketId, Play::Clientbound::PlayerPositionPacketId);
+		EXPECT_EQ(fixture.Session.GetState(), ProtocolState::Play);
+	}
+
 	TEST(PlayProtocolSessionTests, DispatchesKnownPacketAfterPlayAdmission) {
 		auto session = EnterPlay();
-
-		const auto result = session.HandlePacket(MakeFrame(
-			Play::Serverbound::ClientTickEndPacketId));
-
+		const auto result = session.HandlePacket(MakeFrame(Play::Serverbound::ClientTickEndPacketId));
 		ASSERT_TRUE(result.has_value());
 		EXPECT_TRUE(result->OutboundPackets.empty());
 		EXPECT_TRUE(result->Requests.empty());
@@ -347,9 +422,7 @@ namespace Aurore::Tests {
 
 	TEST(PlayProtocolSessionTests, RejectsUnknownPlayPacketWithoutChangingState) {
 		auto session = EnterPlay();
-
 		const auto result = session.HandlePacket(MakeFrame(0x7F));
-
 		ASSERT_FALSE(result.has_value());
 		EXPECT_EQ(result.error(), ProtocolError::UnexpectedPacket);
 		EXPECT_EQ(session.GetState(), ProtocolState::Play);

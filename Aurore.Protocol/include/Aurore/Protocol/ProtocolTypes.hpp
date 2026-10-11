@@ -31,6 +31,7 @@ namespace Aurore::Protocol {
 		MissingConfigurationPlan,
 		ConfigurationMaterializationFailed,
 		ConfigurationGenerationMismatch,
+		PlayBootstrapFailed,
 	};
 
 	template<typename T>
