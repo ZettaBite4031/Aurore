@@ -18,8 +18,11 @@ namespace {
 	using Aurore::Data::Detail::MinecraftDataGeneratorError;
 	using Aurore::Data::Detail::MinecraftDataGeneratorErrorCode;
 
-	[[nodiscard]] std::string DescribeSourceError(MinecraftSourceErrorCode code) {
-		switch (code) {
+	[[nodiscard]]
+	std::string DescribeSourceError(const MinecraftSourceError& error) {
+		if (!error.Detail.empty()) return error.Detail;
+
+		switch (error.Code) {
 		case MinecraftSourceErrorCode::SourceNotImplemented: return "the requested Minecraft source mode is not implemented";
 		case MinecraftSourceErrorCode::PathResolutionFailed: return "the Minecraft source path could not be resolved";
 		case MinecraftSourceErrorCode::PathInspectionFailed: return "the Minecraft source path could not be inspected";
@@ -28,11 +31,14 @@ namespace {
 		case MinecraftSourceErrorCode::FileOpenFailed: return "the Minecraft source file could not be opened";
 		case MinecraftSourceErrorCode::FileReadFailed: return "the Minecraft source file could not be read";
 		case MinecraftSourceErrorCode::EmptyFile: return "the Minecraft source file is empty";
+		case MinecraftSourceErrorCode::OfficialMetadataResolutionFailed: return "official Minecraft metadata resolution failed";
+		case MinecraftSourceErrorCode::OfficialArtifactAcquisitionFailed: return "official Minecraft server artifact acquisition failed";
 		}
 		return "Minecraft source resolution failed";
 	}
 
-	[[nodiscard]] std::string DescribeJavaError(JavaRuntimeErrorCode code) {
+	[[nodiscard]]
+	std::string DescribeJavaError(JavaRuntimeErrorCode code) {
 		switch (code) {
 		case JavaRuntimeErrorCode::NotFound: return "a usable Java runtime could not be found";
 		case JavaRuntimeErrorCode::PathResolutionFailed: return "the Java executable path could not be resolved";
@@ -45,7 +51,8 @@ namespace {
 		return "Java runtime resolution failed";
 	}
 
-	[[nodiscard]] std::string DescribeGeneratorError(MinecraftDataGeneratorErrorCode code) {
+	[[nodiscard]]
+	std::string DescribeGeneratorError(MinecraftDataGeneratorErrorCode code) {
 		switch (code) {
 		case MinecraftDataGeneratorErrorCode::InvalidSourceArtifact: return "the resolved Minecraft source artifact is invalid";
 		case MinecraftDataGeneratorErrorCode::InvalidJavaRuntime: return "the resolved Java runtime is invalid";
@@ -62,17 +69,17 @@ namespace {
 		return "Minecraft raw-data generation failed";
 	}
 
-	[[nodiscard]] RawDataPreparationFailure MakeSourceFailure(const MinecraftSourceError& error) {
+	[[nodiscard]]
+	RawDataPreparationFailure MakeSourceFailure(const MinecraftSourceError& error) {
 		return RawDataPreparationFailure{
 			.Code = RawDataPreparationErrorCode::SourceResolutionFailed,
-			.Message = DescribeSourceError(error.Code),
+			.Message = DescribeSourceError(error),
 			.Path = error.Path,
 			.SystemError = error.SystemError,
 		};
 	}
 
-	[[nodiscard]]
-	RawDataPreparationFailure MakeJavaFailure(const JavaRuntimeError& error) {
+	[[nodiscard]] RawDataPreparationFailure MakeJavaFailure(const JavaRuntimeError& error) {
 		RawDataPreparationFailure result{
 			.Code = RawDataPreparationErrorCode::JavaResolutionFailed,
 			.Message = DescribeJavaError(error.Code),
@@ -89,6 +96,7 @@ namespace {
 
 	[[nodiscard]]
 	RawDataPreparationFailure MakeGenerationFailure(const MinecraftDataGeneratorError& error) {
+
 		RawDataPreparationFailure result{
 			.Code = RawDataPreparationErrorCode::DataGenerationFailed,
 			.Message = DescribeGeneratorError(error.Code),
@@ -99,7 +107,7 @@ namespace {
 			.StandardError = error.StdErr,
 		};
 
-		if (!result.SystemError && error.ProcessFailure)
+		if (!result.SystemError && error.ProcessFailure) 
 			result.SystemError = error.ProcessFailure->SystemError;
 
 		return result;
@@ -109,22 +117,25 @@ namespace {
 namespace Aurore::Data {
 	std::expected<RawDataPreparationResult, RawDataPreparationFailure> DataPreparationService::PrepareRaw(const DataPreparationRequest& request, const DataPreparationRuntimeOptions& runtime) {
 		auto source = MinecraftSourceResolver::Resolve(request);
-		if (!source) return std::unexpected(MakeSourceFailure(source.error()));
-		auto java = Detail::JavaRuntimeResolver::Resolve(Detail::JavaRuntimeRequest{ .ExplicitExecutable = runtime.JavaExecutable });
-		if (!java) return std::unexpected(MakeJavaFailure(java.error()));
+		if (!source)
+			return std::unexpected(MakeSourceFailure(source.error()));
+
+		auto java = Detail::JavaRuntimeResolver::Resolve(Detail::JavaRuntimeRequest{ .ExplicitExecutable = runtime.JavaExecutable, });
+		if (!java) 
+			return std::unexpected(MakeJavaFailure(java.error()));
+
 		auto generated = Detail::MinecraftDataGenerator::Generate(*source, *java, request.GetCacheRoot() / ".staging");
-		if (!generated) return std::unexpected(MakeGenerationFailure(generated.error()));
+		if (!generated)
+			return std::unexpected(MakeGenerationFailure(generated.error()));
+
 		return RawDataPreparationResult{
 			.Version = generated->Version,
-
 			.SourceJarPath = source->JarPath,
 			.SourceFileSize = source->FileSize,
 			.SourceSha1 = source->Sha1,
-
 			.JavaExecutable = java->Executable,
 			.JavaMajorVersion = java->MajorVersion,
 			.JavaVersionText = java->VersionText,
-
 			.GenerationRoot = generated->Root,
 			.ReportsRoot = generated->ReportsRoot,
 			.DataRoot = generated->DataRoot,

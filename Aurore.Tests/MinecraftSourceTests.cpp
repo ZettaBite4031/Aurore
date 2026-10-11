@@ -17,7 +17,6 @@ namespace Aurore::Tests {
 		using Aurore::Data::MinecraftSourceKind;
 		using Aurore::Data::MinecraftSourceResolver;
 		using Aurore::Data::MinecraftVersion;
-		using Aurore::Data::OfficialDownloadSource;
 
 		class MinecraftSourceResolverTests :
 			public ::testing::Test {
@@ -218,6 +217,13 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			result->Sha1.size(),
 			40u);
+
+		EXPECT_FALSE(
+			result->RequiredJavaMajorVersion
+				.has_value());
+
+		EXPECT_FALSE(
+			result->OfficiallyVerified);
 	}
 
 	TEST_F(
@@ -283,37 +289,5 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			first->Sha1,
 			second->Sha1);
-	}
-
-	TEST_F(
-		MinecraftSourceResolverTests,
-		LeavesOfficialDownloadForLaterMilestone) {
-
-		const auto request =
-			DataPreparationRequest::Create(
-				DataPreparationOptions{
-					.Version =
-						MinecraftVersion{
-							.Id = "1.21.11",
-							.ProtocolVersion = 774,
-						},
-					.Source =
-						OfficialDownloadSource{},
-					.CacheRoot =
-						m_Root / "cache",
-				});
-
-		ASSERT_TRUE(request.has_value());
-
-		const auto result =
-			MinecraftSourceResolver::Resolve(
-				*request);
-
-		ASSERT_FALSE(result.has_value());
-
-		EXPECT_EQ(
-			result.error().Code,
-			MinecraftSourceErrorCode::
-			SourceNotImplemented);
 	}
 }

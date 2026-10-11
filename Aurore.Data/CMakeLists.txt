@@ -3,20 +3,24 @@ set(
 
     src/DataPreparation.cpp
     src/DataPreparationService.cpp
+    src/FileIdentity.cpp
     src/JavaRuntime.cpp
     src/MinecraftDataGenerator.cpp
     src/MinecraftSource.cpp
     src/MojangMetadata.cpp
+    src/OfficialMinecraftSource.cpp
     src/Sha1.cpp
 
     include/Aurore/Data/DataPreparation.hpp
     include/Aurore/Data/DataPreparationService.hpp
     include/Aurore/Data/MinecraftSource.hpp
 
+    src/FileIdentity.hpp
     src/HttpClient.hpp
     src/JavaRuntime.hpp
     src/MinecraftDataGenerator.hpp
     src/MojangMetadata.hpp
+    src/OfficialMinecraftSource.hpp
     src/Process.hpp
     src/Sha1.hpp
 )

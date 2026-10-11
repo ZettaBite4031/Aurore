@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <filesystem>
 #include <string>
 
 namespace Aurore::Data::Detail {
@@ -22,6 +23,20 @@ namespace Aurore::Data::Detail {
 		std::string Body;
 	};
 
+	struct HttpFileRequest final {
+		std::string Url;
+		std::filesystem::path Destination;
+
+		std::uintmax_t MaximumResponseBytes{ 0 };
+
+		std::uintmax_t MaximumRedirects{ 5 };
+	};
+
+	struct HttpFileResponse final {
+		std::uint32_t StatusCode{ 0 };
+		std::uintmax_t BytesWritten{ 0 };
+	};
+
 	enum class HttpErrorCode : std::uint8_t {
 		PlatformNotSupported,
 
@@ -30,6 +45,10 @@ namespace Aurore::Data::Detail {
 		InsecureUrl,
 		InvalidResponseLimit,
 		InvalidUrl,
+
+		EmptyDestination,
+		DestinationOpenFailed,
+		DestinationWriteFailed,
 
 		InitializationFailed,
 		RequestFailed,
@@ -52,5 +71,7 @@ namespace Aurore::Data::Detail {
 	class HttpClient final {
 	public:
 		[[nodiscard]] static std::expected<HttpTextResponse, HttpError> GetText(const HttpTextRequest& request);
+
+		[[nodiscard]] static std::expected<HttpFileResponse, HttpError> DownloadFile(const HttpFileRequest& request);
 	};
 }

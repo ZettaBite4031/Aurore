@@ -22,6 +22,7 @@ set(
     NetworkLoopbackTests.cpp
     NetworkTests.cpp
     NetworkRegistryTests.cpp
+    OfficialMinecraftSourceTests.cpp
     OfflineLoginStabilizationTests.cpp
     PacketCodecTests.cpp
     PacketFrameTests.cpp

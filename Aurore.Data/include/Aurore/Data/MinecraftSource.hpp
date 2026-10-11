@@ -22,6 +22,10 @@ namespace Aurore::Data {
 
 		std::uintmax_t FileSize{ 0 };
 		std::string Sha1;
+
+		std::optional<std::uint32_t> RequiredJavaMajorVersion;
+
+		bool OfficiallyVerified{ false };
 	};
 
 	enum class MinecraftSourceErrorCode : std::uint8_t {
@@ -35,6 +39,9 @@ namespace Aurore::Data {
 		FileOpenFailed,
 		FileReadFailed,
 		EmptyFile,
+
+		OfficialMetadataResolutionFailed,
+		OfficialArtifactAcquisitionFailed,
 	};
 
 	struct MinecraftSourceError final {
@@ -42,6 +49,8 @@ namespace Aurore::Data {
 
 		std::filesystem::path Path;
 		std::error_code SystemError;
+
+		std::string Detail;
 	};
 
 	class MinecraftSourceResolver final {
