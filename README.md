@@ -35,45 +35,50 @@ There is no vanilla server hiding underneath it and no large framework quietly d
 
 The current compatibility target is **Minecraft: Java Edition 1.21.11 / protocol 774**.
 
-Aurore is being developed as a sequence of narrow vertical slices. The immediate goal is simple to describe and annoying in exactly the right way:
+The first major protocol frontier is now complete:
 
-> **Make an unmodified vanilla client accept Aurore's Configuration state and enter Play.**
+> **An unmodified vanilla 1.21.11 client can connect to Aurore, complete Configuration using real generated vanilla registry data, send serverbound Finish Configuration, and be formally admitted by Core into Play.**
 
-No chunks. No entities. No gameplay yet. First, the client has to believe our registry universe exists.
+That does **not** mean the server is playable yet. Aurore currently stops at the Play boundary. The next work is the minimum valid Play bootstrap and the beginning of **First Light**.
 
 ---
 
 ## Current frontier
 
 ```text
- HANDSHAKE          STATUS             LOGIN              CONFIGURATION                  PLAY
-    READY             READY             READY              IN PROGRESS                   NEXT
-      ●─────────────────●─────────────────●────────────────────◐──────────────────────────○
-                                                                │
-                                                    vanilla registry convergence
+ HANDSHAKE          STATUS             LOGIN          CONFIGURATION             PLAY
+    READY             READY             READY             READY              NEXT FRONTIER
+      ●─────────────────●─────────────────●─────────────────●────────────────────◐
+                                                                                │
+                                                                     minimum Play bootstrap
 ```
 
 Aurore can currently:
 
-- complete Handshake and Status with a vanilla-compatible client;
+- complete Handshake and Status with an unmodified vanilla 1.21.11 client;
 - complete offline Login and Core identity admission;
-- enter Configuration and exchange Client Information and client brand data;
+- enter Configuration and retain Client Information and client brand data;
 - send Feature Flags and negotiate Known Packs;
 - defer registry materialization until the client's Known Packs response;
-- send Registry Data, Update Tags, and clientbound Finish Configuration;
-- retain one immutable registry generation for the lifetime of the Configuration exchange.
+- prepare authoritative Minecraft 1.21.11 data from the official server artifact;
+- import that generated corpus into an immutable, generation-tracked registry snapshot;
+- send real Registry Data and Update Tags derived from the imported vanilla corpus;
+- send clientbound Finish Configuration;
+- receive vanilla's serverbound Finish Configuration acknowledgement;
+- transition the protocol session and Core lifecycle from Configuration into Play;
+- formally recognize the admitted identity as a joined player.
 
-The current synthetic baseline intentionally stops at registry validation.
+The current intentional stopping point is **Play admission**. Aurore does not yet send the Play-state bootstrap required to place the player into a world, so a vanilla client will not remain in a playable session after the transition.
 
-A Minecraft 1.21.11 client receives Aurore's synthetic dimension type, biome, and tag data, reaches `finish_configuration`, then rejects the registry set because the placeholder definitions are not valid vanilla definitions and several required synchronized registries are empty.
-
-That failure is useful. It means the transport and Configuration lifecycle are reaching the expected boundary. The next work is data correctness, not another protocol rewrite.
+That is now the next frontier.
 
 ---
 
-## The data path
+## The production data path
 
-Aurore now has the machinery to obtain and prepare authoritative version-specific Minecraft data without baking Mojang data into the repository.
+Aurore's production server no longer depends on the synthetic registry snapshot.
+
+The normal startup path is:
 
 ```text
         Mojang version metadata
@@ -86,26 +91,60 @@ Aurore now has the machinery to obtain and prepare authoritative version-specifi
                   ▼
       Minecraft data generation
                   │
-                  ▼
-      validated local raw corpus
+       content-addressed cache
                   │
                   ▼
-       VanillaDataImporter           ← next implementation milestone
+      validated generated corpus
+                  │
+                  ▼
+       VanillaDataImporter
                   │
                   ▼
        immutable RegistrySnapshot
                   │
                   ▼
-     protocol-774 compatibility
-             validation
+       Core::ServerBootstrap
                   │
                   ▼
-        Configuration packets
+      protocol-774 Configuration
+                  │
+                  ▼
+           vanilla client
 ```
 
-`Aurore.DataTool` can exercise the raw preparation path independently of server startup. The importer that converts that corpus into a production registry snapshot is the current missing link.
+Generated data is keyed by the server artifact SHA-1. A complete existing generation is validated and reused on later launches instead of being regenerated every time. Partial or invalid generation output is replaced.
 
-The checked-in synthetic registry factory remains a deterministic regression fixture. It is not intended to resemble a complete vanilla dataset.
+For development and convergence testing, an already generated corpus can also be supplied directly through:
+
+```text
+AURORE_MINECRAFT_DATA_ROOT
+```
+
+The checked-in synthetic registry factory still exists as a deterministic test fixture. It is no longer the normal production startup source.
+
+---
+
+## Vanilla registry import
+
+`Aurore.Data` now translates the Minecraft 1.21.11 generated corpus into Aurore's normalized registry model before networking opens.
+
+The importer currently covers:
+
+- typed block and item identity registries using Mojang protocol IDs;
+- typed dimension type and biome registries;
+- all **23 protocol-774 synchronized registries** required by the current Configuration contract;
+- static identity registries required for vanilla tag synchronization;
+- vanilla tag files across synchronized and static registry domains;
+- direct tag members and nested `#tag` references;
+- optional references;
+- required-reference validation;
+- cyclic tag detection;
+- deterministic flattened tag membership;
+- immutable snapshot publication.
+
+The protocol-774 compatibility manifest describes which registries carry entry data, which contribute tags only, and which representations are permitted on the wire. Mojang JSON remains inside `Aurore.Data`; Core and Protocol consume only Aurore's normalized immutable models.
+
+A full generated Minecraft 1.21.11 corpus is exercised by the opt-in importer integration test, while smaller deterministic fixtures cover individual failure and translation cases.
 
 ---
 
@@ -117,7 +156,7 @@ Aurore is organized around ownership rather than convenience.
 flowchart TD
     Server["Aurore.Server<br/>process composition"]
 
-    Data["Aurore.Data<br/>Minecraft data acquisition & preparation"]
+    Data["Aurore.Data<br/>Minecraft acquisition, generation & import"]
     Core["Aurore.Core<br/>runtime policy & client lifecycle"]
     Protocol["Aurore.Protocol<br/>Minecraft wire format & state"]
     Network["Aurore.Network<br/>bounded byte transport"]
@@ -127,7 +166,7 @@ flowchart TD
     DataTool["Aurore.DataTool<br/>data preparation utility"]
 
     Server --> Core
-    Server -. production data composition .-> Data
+    Server --> Data
 
     DataTool --> Data
 
@@ -147,13 +186,13 @@ The dependency rule is intentionally uncomplicated:
 
 | Project | Responsibility |
 |---|---|
-| `Aurore.Server` | Process entry point and top-level composition |
-| `Aurore.Core` | Client lifecycle, identity, runtime policy, registry publication, and Play admission |
-| `Aurore.Data` | Minecraft source acquisition, verification, generation, corpus validation, and future vanilla import |
-| `Aurore.DataTool` | Standalone entry point for exercising the Minecraft data-preparation pipeline |
+| `Aurore.Server` | Process entry point, production data bootstrap, and top-level composition |
+| `Aurore.Core` | Client lifecycle, identity, runtime policy, registry publication, Configuration approval, and Play admission |
+| `Aurore.Data` | Minecraft source acquisition, verification, generation, corpus validation, vanilla registry/tag import, and normalized snapshot construction |
+| `Aurore.DataTool` | Standalone entry point for exercising Minecraft data preparation |
 | `Aurore.Network` | Minecraft-agnostic transport, bounded queues, limits, and native backend lifecycle |
 | `Aurore.Protocol` | Framing, packet codecs, protocol state, requests/resolutions, registry compatibility, and Configuration sequencing |
-| `Aurore.Util` | Byte primitives, UUIDs, NBT, registries, tags, and immutable snapshots |
+| `Aurore.Util` | Byte primitives, UUIDs, NBT, typed/generic registries, tags, and immutable snapshots |
 | `Aurore.World` | World ownership and explicit simulation/tick phases |
 | `Aurore.Tests` | Unit, component, protocol, contract, backend, process, data, and loopback verification |
 
@@ -169,7 +208,7 @@ Aurore has native **IOCP** and **epoll** network backends behind one Minecraft-a
 
 ### Protocol
 
-Protocol 774 support currently covers the paths needed to reach the Configuration frontier:
+Protocol 774 support currently covers the complete path through Configuration and into the Play boundary:
 
 ```text
 Handshake
@@ -182,10 +221,14 @@ Handshake
         ├── Known Packs
         ├── Registry Data
         ├── Update Tags
-        └── Finish Configuration
+        ├── Finish Configuration
+        └── serverbound Finish Configuration
+            └── Play admission
 ```
 
-Protocol code validates state and packet direction but does not decide whether a player should be admitted. Those decisions belong to Core.
+Protocol owns wire-state correctness. Core decides whether an authenticated connection is permitted to complete Configuration and enter Play.
+
+On successful completion, Core verifies that both the protocol state and client lifecycle agree on `Play` before emitting the formal player-join event.
 
 ### Registry model
 
@@ -195,19 +238,21 @@ The current model supports:
 
 - typed domain registries;
 - generic synchronized network registries;
+- generic static identity registries;
 - typed and generic tag sections;
 - deterministic runtime-ID ordering;
 - optional entry payloads;
 - generation-local tag resolution;
 - protocol-specific compatibility manifests;
 - required/optional/forbidden entry and tag policies;
-- minimum-entry and dependency validation.
+- minimum-entry and dependency validation;
+- representation-collision validation.
 
 A client sees one coherent snapshot for an entire Configuration exchange. It cannot observe a half-published registry update.
 
-### Minecraft data preparation
+### Minecraft data pipeline
 
-`Aurore.Data` currently provides the foundations for version-specific vanilla data acquisition:
+`Aurore.Data` provides the complete version-specific data path currently required by Configuration:
 
 - official Mojang metadata and artifact resolution;
 - optional local JAR sources;
@@ -215,15 +260,20 @@ A client sees one coherent snapshot for an entire Configuration exchange. It can
 - Java runtime discovery;
 - bounded child-process execution;
 - Minecraft data/report generation;
-- generated corpus validation and inspection.
+- content-addressed generated-data reuse;
+- generated corpus validation;
+- vanilla registry import;
+- static protocol-ID identity import;
+- tag parsing and resolution;
+- immutable snapshot construction.
 
-The next layer is `VanillaDataImporter`, which will translate the generated corpus into Aurore's normalized registry model.
+The production executable prepares or reuses that data before constructing `Core::Server`.
 
 ---
 
-## Configuration: finish line
+## Configuration: complete
 
-Configuration is considered complete when an unmodified Minecraft 1.21.11 client performs this sequence:
+The Configuration milestone was defined by one concrete compatibility test:
 
 ```text
 client ── Handshake / Login ───────────────────────────────► Aurore
@@ -239,22 +289,19 @@ client ───────────── Finish Configuration ────
                          │
                          ▼
 
-                 ProtocolState::Play
+             ProtocolState::Play
+             ClientLifecycleState::Play
+                         │
+                         ▼
+
+                Core player admission
 ```
 
-The remaining implementation path is intentionally narrow:
+That sequence now works against an **unmodified Minecraft 1.21.11 client using Aurore's production imported registry snapshot**.
 
-1. implement `VanillaDataImporter`;
-2. import real dimension types and biomes;
-3. populate the remaining required protocol-774 synchronized registries;
-4. import and resolve vanilla tags;
-5. complete the protocol-774 registry manifest;
-6. make the imported snapshot the normal server bootstrap path;
-7. iterate against vanilla until the client sends serverbound Finish Configuration.
+Configuration is therefore considered complete for the current development stage.
 
-At that point, **Configuration is done**.
-
-The minimum Play bootstrap is a separate milestone.
+Future work may return to Configuration if later Play-state implementation exposes a genuine compatibility defect, but there is no remaining planned Configuration milestone.
 
 ---
 
@@ -315,15 +362,57 @@ Or:
 Release presets and the complete development workflow are documented in [Development](docs/DEVELOPMENT.md).
 
 > [!NOTE]
-> A Java runtime is not required to build Aurore itself. It is required when using the Minecraft raw-data preparation pipeline.
+> A Java runtime is not required to build Aurore itself. It is required when Aurore needs to generate Minecraft's raw server data. A valid cached generation or an explicit existing corpus can be reused on later launches.
+
+---
+
+## Run it
+
+Normal server startup prepares or reuses the pinned Minecraft 1.21.11 data automatically:
+
+```powershell
+./out/build/windows-debug/bin/Aurore.Server.exe
+```
+
+To force Aurore to use an already generated corpus, set the generation root containing `reports/registries.json` and `data/minecraft`:
+
+```powershell
+$env:AURORE_MINECRAFT_DATA_ROOT = "C:\path\to\generation\<server-sha1>"
+./out/build/windows-debug/bin/Aurore.Server.exe
+```
+
+An explicit Java executable can also be supplied when raw generation is needed:
+
+```powershell
+$env:AURORE_JAVA_EXECUTABLE = "C:\path\to\java.exe"
+```
+
+A successful connection currently reaches Play admission, but no Play-state bootstrap packets are sent yet.
 
 ---
 
 ## First Light
 
-**First Light** remains Aurore's first end-to-end server milestone, but Configuration convergence comes first.
+**First Light** is now the active end-to-end server milestone.
 
-First Light begins once a vanilla client can enter Play. From there, the goal is deliberately tiny: establish the minimum valid Play bootstrap, keep one player synchronized in one small world context, and disconnect cleanly.
+Configuration convergence is complete. The next goal is deliberately small: establish the minimum valid Play bootstrap, keep one vanilla player synchronized in one small world context, and disconnect cleanly.
+
+That means the next work begins after:
+
+```text
+Configuration
+     │
+     ▼
+   Play
+     │
+     ▼
+minimum client bootstrap
+     │
+     ▼
+one player
+one small world context
+stable synchronization
+```
 
 Broad chunk generation, entity systems, inventory, commands, persistence, online authentication, compression, and a public mod API are not prerequisites unless the minimum client path proves otherwise.
 
