@@ -368,17 +368,6 @@ namespace {
 			.SchemaContract = {},
 			.SourceCodec = {},
 		},
-		RawRegistryRule{
-			.Key = "minecraft:potion",
-			.Presence = RegistryPresence::Optional,
-			.EntryData = RegistryEntryDataPolicy::Forbidden,
-			.Tags = RegistryTagPolicy::Optional,
-			.Representation = RegistryRepresentation::StaticIdentity,
-			.Evidence = RegistryCompatibilityEvidence::ProtocolContract,
-			.MinimumEntries = 0,
-			.SchemaContract = {},
-			.SourceCodec = {},
-		},
 	};
 
 	[[nodiscard]] bool IsKnownPackSelected(const KnownPack& pack, std::span<const KnownPack> selected_packs) {

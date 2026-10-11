@@ -87,7 +87,6 @@ namespace {
 		TagRegistryDescriptor{ "minecraft:fluid", "fluid", TagRegistryTarget::Static },
 		TagRegistryDescriptor{ "minecraft:game_event", "game_event", TagRegistryTarget::Static },
 		TagRegistryDescriptor{ "minecraft:point_of_interest_type", "point_of_interest_type", TagRegistryTarget::Static },
-		TagRegistryDescriptor{ "minecraft:potion", "potion", TagRegistryTarget::Static },
 	};
 
 	[[nodiscard]] VanillaDataImportError MakeTagError(VanillaDataImportErrorCode code, const MinecraftDataCorpus& corpus, RegistryGeneration generation, const std::filesystem::path& path, std::optional<ResourceLocation> key = std::nullopt, std::string field = {}, std::string detail = {}) {

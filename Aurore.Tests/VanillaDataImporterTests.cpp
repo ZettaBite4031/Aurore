@@ -593,7 +593,7 @@ namespace Aurore::Tests {
 		EXPECT_TRUE(stone_item->Value.Data.Empty());
 
 		const auto& static_registries = (*result)->GetStaticRegistries();
-		ASSERT_EQ(static_registries.Size(), 5u);
+		ASSERT_EQ(static_registries.Size(), 4u);
 
 		const auto entity_type_key = ParseRequired("minecraft:entity_type");
 		const auto* entity_types = static_registries.Find(entity_type_key);
@@ -625,8 +625,8 @@ namespace Aurore::Tests {
 		ASSERT_EQ(damage_tags->Size(), 1u);
 
 		const auto& static_tags = (*result)->GetStaticRegistryTags();
-		ASSERT_EQ(static_tags.Size(), 5u);
-		ASSERT_EQ(static_tags.GetTotalTagCount(), 5u);
+		ASSERT_EQ(static_tags.Size(), 4u);
+		ASSERT_EQ(static_tags.GetTotalTagCount(), 4u);
 
 		const auto* entity_tags =
 			static_tags.Find(ParseRequired("minecraft:entity_type"));
@@ -1146,7 +1146,7 @@ namespace Aurore::Tests {
 		EXPECT_EQ((*result)->GetBlocks().Size(), 1166u);
 		EXPECT_EQ((*result)->GetItems().Size(), 1505u);
 		EXPECT_EQ((*result)->GetNetworkRegistries().Size(), 21u);
-		EXPECT_EQ((*result)->GetStaticRegistries().Size(), 5u);
+		EXPECT_EQ((*result)->GetStaticRegistries().Size(), 4u);
 
 		const auto* entity_types =
 			(*result)->GetStaticRegistries().Find(
@@ -1160,21 +1160,16 @@ namespace Aurore::Tests {
 		const auto* poi_types =
 			(*result)->GetStaticRegistries().Find(
 				ParseRequired("minecraft:point_of_interest_type"));
-		const auto* potions =
-			(*result)->GetStaticRegistries().Find(
-				ParseRequired("minecraft:potion"));
 
 		ASSERT_NE(entity_types, nullptr);
 		ASSERT_NE(fluids, nullptr);
 		ASSERT_NE(game_events, nullptr);
 		ASSERT_NE(poi_types, nullptr);
-		ASSERT_NE(potions, nullptr);
 
 		EXPECT_EQ(entity_types->Size(), 157u);
 		EXPECT_EQ(fluids->Size(), 5u);
 		EXPECT_EQ(game_events->Size(), 60u);
 		EXPECT_EQ(poi_types->Size(), 21u);
-		EXPECT_EQ(potions->Size(), 46u);
 
 		EXPECT_GT((*result)->GetBlockTags().Size(), 0u);
 		EXPECT_GT((*result)->GetItemTags().Size(), 0u);
@@ -1182,7 +1177,7 @@ namespace Aurore::Tests {
 		EXPECT_GT((*result)->GetNetworkRegistryTags().GetTotalTagCount(), 0u);
 
 		const auto& static_tags = (*result)->GetStaticRegistryTags();
-		EXPECT_EQ(static_tags.Size(), 5u);
+		EXPECT_EQ(static_tags.Size(), 4u);
 		EXPECT_GT(static_tags.GetTotalTagCount(), 0u);
 	}
 

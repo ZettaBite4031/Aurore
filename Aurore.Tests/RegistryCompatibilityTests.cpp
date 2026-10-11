@@ -105,7 +105,7 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			manifest->GetCompleteness(),
 			RegistryManifestCompleteness::Provisional);
-		EXPECT_EQ(manifest->GetRules().size(), 30u);
+		EXPECT_EQ(manifest->GetRules().size(), 29u);
 	}
 
 	TEST(

@@ -48,7 +48,6 @@ namespace {
 		{ "minecraft:fluid", StaticRegistryKind::Generic },
 		{ "minecraft:game_event", StaticRegistryKind::Generic },
 		{ "minecraft:point_of_interest_type", StaticRegistryKind::Generic },
-		{ "minecraft:potion", StaticRegistryKind::Generic },
 	};
 
 	[[nodiscard]] VanillaDataImportError MakeReportError(VanillaDataImportErrorCode code, const MinecraftDataCorpus& corpus, RegistryGeneration generation, std::string field = {}, std::string detail = {}) {
