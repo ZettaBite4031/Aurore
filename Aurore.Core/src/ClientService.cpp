@@ -468,9 +468,26 @@ namespace Aurore::Core {
 			return false;
 		}
 
-		AU_INFO(LogCategory::Protocol,
-			"Configuration completed for connection {} using registry generation {}",
+		if (client.GetProtocolState() != Protocol::ProtocolState::Play || client.GetLifecycleState() != ClientLifecycleState::Play) {
+			AU_ERROR(LogCategory::Core, "Configuration completion for connection {} did not transitino the client into Play. "
+					"Protocol state: {}, lifecycle state: {}", connection.Value,
+					Protocol::GetProtocolStateName(client.GetProtocolState()),
+					static_cast<unsigned int>(client.GetLifecycleState()));
+
+			(void)m_ConnectionManager.ReleaseIdentity(connection);
+
+			RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+
+			return false;
+		}
+
+		AU_DEBUG(LogCategory::Protocol,
+			"Configuration completed for connection {} using registry generation {}; client entered Play",
 			connection.Value, request.Generation);
+
+		const auto& player_identity = *identity;
+		AU_INFO(LogCategory::Player, "Player '{}' ({}) joined the server on connection {}",
+			player_identity.Username, player_identity.UniqueId.ToString(), connection.Value);
 
 		AU_DEBUG(LogCategory::Protocol,
 			"Configuration metadata for connection {}. Client Information: {}, Client Brand: {}, Brand Bytes: {}",
