@@ -2,34 +2,33 @@
 
 #include <utility>
 
+namespace {
+	[[nodiscard]] Aurore::Util::ResourceLocation RequiredLocation(std::string_view value) {
+		auto result = Aurore::Util::ResourceLocation::Parse(value);
+		if (!result) std::terminate();
+		return std::move(*result);
+	}
+}
+
 namespace Aurore::World {
-	Dimension::Dimension(DimensionKind kind, std::string ident)
-		: m_Kind(kind), m_Identifier(std::move(ident)) {}
+	Dimension::Dimension(DimensionKind kind, std::string identifier)
+		: m_Kind(kind), m_Identifier(std::move(identifier)), m_AirBlock(RequiredLocation("minecraft:air")) {}
 
 	Dimension::~Dimension() noexcept { Shutdown(); }
 
 	bool Dimension::Initialize() {
 		if (m_Initialized) return true;
-
 		if (m_Identifier.empty()) return false;
 
-		/*
-			Future initialization belongs here.
+		m_Chunks.clear();
 
-			Examples:
-
-				- World-border state
-				- Weather state
-				- Scheduled command storage
-				- Block and fluid tick schedulers
-				- Chunk management
-				- Entity management
-				- Block-entity management
-				- Game-event dispatch
-		*/
+		if (m_Kind == DimensionKind::Overworld
+			&& !InitializeFirstLightOverworld()) {
+			m_Chunks.clear();
+			return false;
+		}
 
 		m_Initialized = true;
-
 		return true;
 	}
 
@@ -62,7 +61,6 @@ namespace Aurore::World {
 		TickEntities(context);
 		TickBlockEntities(context);
 		HandleGameEvents(context);
-
 	}
 
 	void Dimension::Shutdown() noexcept {
@@ -79,162 +77,108 @@ namespace Aurore::World {
 				- Destroy simulation subsystems
 		*/
 
+		m_Chunks.clear();
 		m_Initialized = false;
 	}
 
+	bool Dimension::SetBlock(BlockPosition position, Aurore::Util::ResourceLocation block) {
+		if (position.Y < m_MinimumY || position.Y >= m_MinimumY + m_Height) return false;
+
+		auto* chunk = GetOrCreateChunk(GetChunkPosition(position));
+		if (chunk == nullptr) return false;
+
+		return chunk->SetBlock(GetLocalBlockPosition(position), std::move(block));
+	}
+
+	const Aurore::Util::ResourceLocation& Dimension::GetBlock(BlockPosition position) const noexcept {
+		if (position.Y < m_MinimumY || position.Y >= m_MinimumY + m_Height) return m_AirBlock;
+
+		const auto* chunk = FindChunk(GetChunkPosition(position));
+		if (chunk == nullptr) return m_AirBlock;
+
+		return chunk->GetBlock(GetLocalBlockPosition(position));
+	}
+
+	Chunk* Dimension::FindChunk(ChunkPosition position) noexcept {
+		const auto iterator = m_Chunks.find(position);
+		return iterator == m_Chunks.end() ? nullptr : iterator->second.get();
+	}
+
+	const Chunk* Dimension::FindChunk(ChunkPosition position) const noexcept {
+		const auto iterator = m_Chunks.find(position);
+		return iterator == m_Chunks.end() ? nullptr : iterator->second.get();
+	}
+
+	std::size_t Dimension::GetLoadedChunkCount() const noexcept { return m_Chunks.size(); }
 	DimensionKind Dimension::GetKind() const noexcept { return m_Kind; }
 	std::string_view Dimension::GetIdentifier() const noexcept { return m_Identifier; }
 	bool Dimension::IsInitialized() const noexcept { return m_Initialized; }
+	bool Dimension::IsVoidWorld() const noexcept { return m_VoidWorld; }
+	std::int32_t Dimension::GetMinimumY() const noexcept { return m_MinimumY; }
+	std::int32_t Dimension::GetHeight() const noexcept { return m_Height; }
+	std::int32_t Dimension::GetSeaLevel() const noexcept { return m_SeaLevel; }
+	const DimensionSpawnPosition& Dimension::GetSpawnPosition() const noexcept { return m_SpawnPosition; }
+	const Aurore::Util::ResourceLocation& Dimension::GetAirBlock() const noexcept { return m_AirBlock; }
 
-	void Dimension::UpdateWorldBorder(const WorldTickContext& context) {
-		(void)context;
-	}
+	bool Dimension::InitializeFirstLightOverworld() {
+		const auto grass = RequiredLocation("minecraft:grass_block");
+		const auto dirt = RequiredLocation("minecraft:dirt");
+		const auto stone = RequiredLocation("minecraft:stone");
 
-
-	void Dimension::AdvanceWeatherCycle(const WorldTickContext& context) {
-		(void)context;
-
-		/*
-			The Overworld normally owns observable weather behavior.
-			Other dimension types may make this phase a no-op, but the
-			phase remains in the common dimension pipeline.
-		*/
-	}
-
-
-	void Dimension::AdvanceDaylightCycle(const WorldTickContext& context) {
-		(void)context;
-	}
-
-
-	void Dimension::RunPlayerSleepingLogic(const WorldTickContext& context) {
-		(void)context;
-	}
-
-
-	void Dimension::RunScheduledCommands(const WorldTickContext& context) {
-		(void)context;
+		m_VoidWorld = true;
+		m_MinimumY = -64;
+		m_Height = 384;
+		m_SeaLevel = 63;
+		m_SpawnPosition = DimensionSpawnPosition{
+			.X = 2.5,
+			.Y = 64.0,
+			.Z = 2.5,
+			.Yaw = 0.0F,
+			.Pitch = 0.0F,
+		};
 
 		/*
-			This is dimension-level scheduled command execution.
+			First Light deliberately lives entirely inside chunk (0, 0):
+			5x5 grass at Y=63, dirt at Y=62, stone at Y=61.
 
-			It is not the same mechanism as:
-
-				- Core server pending tasks
-				- Scheduled block ticks
-				- Scheduled fluid ticks
-				- Block events
+			Keeping the initial platform in one chunk makes Step 5 about correct
+			chunk serialization rather than premature chunk-streaming policy.
 		*/
+		for (std::int32_t z{ 0 }; z < 5; ++z) {
+			for (std::int32_t x{ 0 }; x < 5; ++x) {
+				if (!SetBlock(BlockPosition{ .X = x, .Y = 61, .Z = z }, stone)) return false;
+				if (!SetBlock(BlockPosition{ .X = x, .Y = 62, .Z = z }, dirt)) return false;
+				if (!SetBlock(BlockPosition{ .X = x, .Y = 63, .Z = z }, grass)) return false;
+			}
+		}
+
+		return true;
 	}
 
+	Chunk* Dimension::GetOrCreateChunk(ChunkPosition position) {
+		if (auto* existing = FindChunk(position)) return existing;
 
-	void Dimension::RunScheduledBlockTicks(const WorldTickContext& context) {
-		(void)context;
-
-		/*
-			Future BlockTickScheduler execution.
-
-			The scheduler will need to preserve vanilla ordering by:
-
-				1. Scheduled game tick
-				2. Tick priority
-				3. Scheduling order
-		*/
+		auto chunk = std::make_unique<Chunk>(position, m_MinimumY, m_Height, m_AirBlock);
+		auto* result = chunk.get();
+		const auto [iterator, inserted] = m_Chunks.emplace(position, std::move(chunk));
+		return inserted ? result : iterator->second.get();
 	}
 
-
-	void Dimension::RunScheduledFluidTicks(const WorldTickContext& context) {
-		(void)context;
-
-		/*
-			Fluid ticks require their own scheduler and must not be merged
-			with scheduled block ticks merely because their ordering rules
-			are structurally similar.
-		*/
-	}
-
-
-	void Dimension::RunRaidLogic(const WorldTickContext& context) {
-		(void)context;
-	}
-
-
-	void Dimension::UpdateChunkLoadLevels(const WorldTickContext& context) {
-		(void)context;
-	}
-
-
-	void Dimension::TickChunksInRandomOrder(const WorldTickContext& context) {
-		(void)context;
-
-		/*
-			The exact vanilla chunk-selection and iteration algorithm still
-			needs to be established before this phase is implemented.
-
-			For each selected ticking chunk, the internal order is:
-
-				1. Attempt mob spawning
-				2. Tick ice and snow behavior
-				3. Execute random block ticks
-
-			Do not use std::shuffle as a placeholder. Its behavior would not
-			necessarily reproduce vanilla's observable ordering or random
-			number consumption.
-		*/
-	}
-
-
-	void Dimension::SendBlockChanges(const WorldTickContext& context) {
-		(void)context;
-	}
-
-
-	void Dimension::UpdatePointsOfInterest(const WorldTickContext& context) {
-		(void)context;
-	}
-
-
-	void Dimension::UnloadChunks(const WorldTickContext& context) {
-		(void)context;
-	}
-
-
-	void Dimension::TickDragonFight(const WorldTickContext& context) {
-		(void)context;
-
-		// Should it be restricted? TODO: Discover proper working order.
-		// if (m_Kind != DimensionKind::End) return; ???
-
-		/*
-			Future End-specific dragon-fight state ticking.
-		*/
-	}
-
-
-	void Dimension::TickEntities(const WorldTickContext& context) {
-		(void)context;
-
-		/*
-			Future entity phase:
-
-				For each non-passenger entity:
-
-					1. Check whether it can despawn
-					2. Tick the entity
-					3. Tick its passengers
-
-			Passengers must not also be visited as independent top-level
-			entities during the same phase.
-		*/
-	}
-
-
-	void Dimension::TickBlockEntities(const WorldTickContext& context) {
-		(void)context;
-	}
-
-
-	void Dimension::HandleGameEvents(const WorldTickContext& context) {
-		(void)context;
-	}
+	void Dimension::UpdateWorldBorder(const WorldTickContext& context) { (void)context; }
+	void Dimension::AdvanceWeatherCycle(const WorldTickContext& context) { (void)context; }
+	void Dimension::AdvanceDaylightCycle(const WorldTickContext& context) { (void)context; }
+	void Dimension::RunPlayerSleepingLogic(const WorldTickContext& context) { (void)context; }
+	void Dimension::RunScheduledCommands(const WorldTickContext& context) { (void)context; }
+	void Dimension::RunScheduledBlockTicks(const WorldTickContext& context) { (void)context; }
+	void Dimension::RunScheduledFluidTicks(const WorldTickContext& context) { (void)context; }
+	void Dimension::RunRaidLogic(const WorldTickContext& context) { (void)context; }
+	void Dimension::UpdateChunkLoadLevels(const WorldTickContext& context) { (void)context; }
+	void Dimension::TickChunksInRandomOrder(const WorldTickContext& context) { (void)context; }
+	void Dimension::SendBlockChanges(const WorldTickContext& context) { (void)context; }
+	void Dimension::UpdatePointsOfInterest(const WorldTickContext& context) { (void)context; }
+	void Dimension::UnloadChunks(const WorldTickContext& context) { (void)context; }
+	void Dimension::TickDragonFight(const WorldTickContext& context) { (void)context; }
+	void Dimension::TickEntities(const WorldTickContext& context) { (void)context; }
+	void Dimension::TickBlockEntities(const WorldTickContext& context) { (void)context; }
+	void Dimension::HandleGameEvents(const WorldTickContext& context) { (void)context; }
 }

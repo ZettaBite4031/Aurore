@@ -2,10 +2,12 @@ add_library(
     aurore_world
     STATIC
 
+    src/Chunk.cpp
     src/Dimension.cpp
     src/Player.cpp
     src/WorldManager.cpp
 
+    include/Aurore/World/Chunk.hpp
     include/Aurore/World/Dimension.hpp
     include/Aurore/World/Player.hpp
     include/Aurore/World/WorldManager.hpp
