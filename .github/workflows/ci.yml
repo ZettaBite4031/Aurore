@@ -53,7 +53,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build
+          sudo apt-get install -y ninja-build libcurl4-openssl-dev
 
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
