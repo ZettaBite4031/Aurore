@@ -17,6 +17,7 @@ namespace Aurore::Data {
 		TargetValidation,
 		DimensionTypes,
 		Biomes,
+		NetworkRegistries,
 		SnapshotBuild,
 	};
 
@@ -34,11 +35,16 @@ namespace Aurore::Data {
 		JsonParseFailed,
 		InvalidJsonRoot,
 		MissingField,
+		UnexpectedField,
 		InvalidFieldType,
 		InvalidFieldValue,
 		InvalidResourceLocation,
+		UnsupportedJsonValue,
+		HeterogeneousJsonArray,
 
 		RegistryDeclarationFailed,
+		NetworkRegistryBuildFailed,
+		NetworkRegistryCollectionDeclarationFailed,
 		SnapshotBuildFailed,
 	};
 
@@ -57,6 +63,8 @@ namespace Aurore::Data {
 		std::error_code SystemError;
 
 		std::optional<Aurore::Util::RegistryDeclarationError> DeclarationError;
+		std::optional<Aurore::Util::RegistryBuildError> NetworkRegistryBuildError;
+		std::optional<Aurore::Util::NetworkRegistryCollectionDeclarationError> NetworkRegistryCollectionError;
 		std::optional<Aurore::Util::RegistrySnapshotError> SnapshotError;
 	};
 

@@ -58,7 +58,13 @@ namespace Aurore::Data::Detail {
 
 	[[nodiscard]] std::expected<Aurore::Util::NbtString, VanillaDataImportError> MakeNbtString(std::string_view value, std::string_view field, const VanillaRegistryEntryContext& context);
 
+	[[nodiscard]] std::expected<void, VanillaDataImportError> ValidateObjectFields(const Sonnet::value& object, std::span<const std::string_view> allowed_fields, const VanillaRegistryEntryContext& context);
+
+	[[nodiscard]] std::expected<Aurore::Util::NbtValue, VanillaDataImportError> ConvertJsonToNbt(const Sonnet::value& value, std::string_view field, const VanillaRegistryEntryContext& context);
+
 	[[nodiscard]] std::expected<void, VanillaDataImportError> ImportDimensionTypes(const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation, Aurore::Util::RegistrySnapshotBuilder& builder);
 
 	[[nodiscard]] std::expected<void, VanillaDataImportError> ImportBiomes(const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation, Aurore::Util::RegistrySnapshotBuilder& builder);
+
+	[[nodiscard]] std::expected<void, VanillaDataImportError> ImportNetworkRegistries(const MinecraftDataCorpus& corpus, Aurore::Util::RegistryGeneration generation, Aurore::Util::RegistrySnapshotBuilder& builder);
 }

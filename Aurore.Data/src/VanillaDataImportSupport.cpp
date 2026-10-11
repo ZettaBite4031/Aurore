@@ -317,4 +317,126 @@ namespace Aurore::Data::Detail {
 
 		return std::move(*result);
 	}
+
+	std::expected<void, VanillaDataImportError> ValidateObjectFields(const Sonnet::value& object, std::span<const std::string_view> allowed_fields, const VanillaRegistryEntryContext& context) {
+		if (!object.is_object())
+			return std::unexpected(MakeEntryError(VanillaDataImportErrorCode::InvalidFieldType, context, {}, "expected JSON object"));
+
+		for (const auto& [name, value] : object.as_object()) {
+			(void)value;
+			const std::string_view field{ name.data(), name.size() };
+			if (std::ranges::find(allowed_fields, field) != allowed_fields.end()) continue;
+			return std::unexpected(MakeEntryError(VanillaDataImportErrorCode::UnexpectedField, context, std::string{ field },
+				"field is not part of the Minecraft 1.21.11 source contract for this registry"));
+		}
+
+		return {};
+	}
+
+	std::expected<Aurore::Util::NbtValue, VanillaDataImportError> ConvertJsonToNbt(const Sonnet::value& value, std::string_view field, const VanillaRegistryEntryContext& context) {
+		using Aurore::Util::NbtCompound;
+		using Aurore::Util::NbtList;
+		using Aurore::Util::NbtString;
+		using Aurore::Util::NbtType;
+		using Aurore::Util::NbtValue;
+
+		switch (value.type()) {
+		case Sonnet::kind::null:
+			return std::unexpected(MakeEntryError(VanillaDataImportErrorCode::UnsupportedJsonValue, context, std::string{ field },
+				"JSON null has no direct registry NBT representation"));
+
+		case Sonnet::kind::boolean:
+			return NbtValue::Byte(value.as_bool() ? 1 : 0);
+
+		case Sonnet::kind::number: {
+			const double number = value.as_number();
+			if (!std::isfinite(number))
+				return std::unexpected(MakeEntryError(VanillaDataImportErrorCode::InvalidFieldValue, context, std::string{ field },
+					"JSON number must be finite"));
+
+			if (std::trunc(number) == number) {
+				if (number >= static_cast<double>(std::numeric_limits<std::int32_t>::min())
+					&& number <= static_cast<double>(std::numeric_limits<std::int32_t>::max()))
+					return NbtValue::Int(static_cast<std::int32_t>(number));
+
+				if (number >= static_cast<double>(std::numeric_limits<std::int64_t>::min())
+					&& number <= static_cast<double>(std::numeric_limits<std::int64_t>::max()))
+					return NbtValue::Long(static_cast<std::int64_t>(number));
+			}
+
+			return NbtValue::Double(number);
+		}
+
+		case Sonnet::kind::string: {
+			auto text = MakeNbtString(std::string_view{ value.as_string().data(), value.as_string().size() }, field, context);
+			if (!text) return std::unexpected(text.error());
+			return NbtValue::String(std::move(*text));
+		}
+
+		case Sonnet::kind::array: {
+			const auto& source = value.as_array();
+			if (source.empty()) {
+				auto list = NbtList::Create(NbtType::End);
+				if (!list)
+					return std::unexpected(MakeEntryError(VanillaDataImportErrorCode::HeterogeneousJsonArray, context, std::string{ field },
+						"failed to create empty NBT list"));
+
+				return NbtValue::List(std::move(*list));
+			}
+
+			std::vector<NbtValue> values;
+			values.reserve(source.size());
+
+			std::optional<NbtType> element_type;
+			for (std::size_t index{ 0 }; index < source.size(); ++index) {
+				std::string element_field{ field };
+				element_field.push_back('[');
+				element_field.append(std::to_string(index));
+				element_field.push_back(']');
+
+				auto converted = ConvertJsonToNbt(source[index], element_field, context);
+				if (!converted) return std::unexpected(converted.error());
+
+				if (!element_type)
+					element_type = converted->GetType();
+				else if (*element_type != converted->GetType())
+					return std::unexpected(MakeEntryError(VanillaDataImportErrorCode::HeterogeneousJsonArray, context, std::string{ field },
+						"NBT lists require every element to have the same tag type"));
+
+				values.push_back(std::move(*converted));
+			}
+
+			auto list = NbtList::Create(*element_type, std::move(values));
+			if (!list)
+				return std::unexpected(MakeEntryError(VanillaDataImportErrorCode::HeterogeneousJsonArray, context, std::string{ field },
+					"JSON array could not be represented as an NBT list"));
+
+			return NbtValue::List(std::move(*list));
+		}
+
+		case Sonnet::kind::object: {
+			NbtCompound compound;
+
+			for (const auto& [name, child] : value.as_object()) {
+				const std::string_view name_view{ name.data(), name.size() };
+
+				auto nbt_name = MakeNbtString(name_view, field, context);
+				if (!nbt_name) return std::unexpected(nbt_name.error());
+
+				std::string child_field{ field };
+				if (!child_field.empty()) child_field.push_back('.');
+				child_field.append(name_view);
+
+				auto converted = ConvertJsonToNbt(child, child_field, context);
+				if (!converted) return std::unexpected(converted.error());
+
+				compound.Set(std::move(*nbt_name), std::move(*converted));
+			}
+
+			return NbtValue::Compound(std::move(compound));
+		}
+		}
+
+		std::unreachable();
+	}
 }

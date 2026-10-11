@@ -15,6 +15,7 @@ set(
     src/VanillaDataImporter.cpp
     src/VanillaDataImportSupport.cpp
     src/VanillaDimensionTypeImporter.cpp
+    src/VanillaNetworkRegistryImporter.cpp
 
     include/Aurore/Data/DataPreparation.hpp
     include/Aurore/Data/DataPreparationService.hpp

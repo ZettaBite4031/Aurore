@@ -33,6 +33,9 @@ namespace Aurore::Data {
 		const auto biomes = Detail::ImportBiomes(corpus, generation, builder);
 		if (!biomes) return std::unexpected(biomes.error());
 
+		const auto network_registries = Detail::ImportNetworkRegistries(corpus, generation, builder);
+		if (!network_registries) return std::unexpected(network_registries.error());
+
 		auto snapshot = std::move(builder).Build(generation);
 		if (!snapshot) {
 			auto error = Detail::MakeImportError(VanillaDataImportErrorCode::SnapshotBuildFailed, corpus, generation, VanillaDataImportStage::SnapshotBuild);

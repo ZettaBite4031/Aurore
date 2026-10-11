@@ -67,6 +67,7 @@ namespace Aurore::Tests {
 				WriteFile("reports/registries.json", "{}");
 				WriteDimensionFixtures();
 				WriteBiomeFixtures();
+				WriteNetworkFixtures();
 			}
 
 			void TearDown() override {
@@ -76,6 +77,11 @@ namespace Aurore::Tests {
 
 			void WriteFile(const std::filesystem::path& relative, std::string_view content) const {
 				const auto path = m_Root / relative;
+
+				std::error_code error;
+				std::filesystem::create_directories(path.parent_path(), error);
+				ASSERT_FALSE(error);
+
 				std::ofstream stream{ path, std::ios::binary };
 				ASSERT_TRUE(stream.is_open());
 				stream.write(content.data(), static_cast<std::streamsize>(content.size()));
@@ -167,6 +173,90 @@ namespace Aurore::Tests {
 					})json");
 			}
 
+			void WriteNetworkFixtures() const {
+				WriteFile(
+					"data/minecraft/cat_variant/black.json",
+					R"json({
+						"asset_id": "minecraft:entity/cat/black",
+						"spawn_conditions": []
+					})json");
+
+				WriteFile(
+					"data/minecraft/chicken_variant/cold.json",
+					R"json({
+						"model": "cold",
+						"asset_id": "minecraft:entity/chicken/cold",
+						"spawn_conditions": []
+					})json");
+
+				WriteFile(
+					"data/minecraft/cow_variant/warm.json",
+					R"json({
+						"model": "warm",
+						"asset_id": "minecraft:entity/cow/warm",
+						"spawn_conditions": []
+					})json");
+
+				WriteFile(
+					"data/minecraft/frog_variant/temperate.json",
+					R"json({
+						"asset_id": "minecraft:entity/frog/temperate",
+						"spawn_conditions": []
+					})json");
+
+				WriteFile(
+					"data/minecraft/painting_variant/kebab.json",
+					R"json({
+						"width": 1,
+						"height": 1,
+						"asset_id": "minecraft:kebab",
+						"title": {
+							"translate": "painting.minecraft.kebab.title"
+						},
+						"author": {
+							"text": "Kristoffer Zetterstrand"
+						}
+					})json");
+
+				WriteFile(
+					"data/minecraft/pig_variant/cold.json",
+					R"json({
+						"model": "cold",
+						"asset_id": "minecraft:entity/pig/cold",
+						"spawn_conditions": []
+					})json");
+
+				WriteFile(
+					"data/minecraft/wolf_sound_variant/classic.json",
+					R"json({
+						"ambient_sound": "minecraft:entity.wolf.ambient",
+						"death_sound": "minecraft:entity.wolf.death",
+						"growl_sound": "minecraft:entity.wolf.growl",
+						"hurt_sound": "minecraft:entity.wolf.hurt",
+						"pant_sound": "minecraft:entity.wolf.pant",
+						"whine_sound": "minecraft:entity.wolf.whine"
+					})json");
+
+				WriteFile(
+					"data/minecraft/wolf_variant/pale.json",
+					R"json({
+						"assets": {
+							"wild": "minecraft:entity/wolf/wolf",
+							"tame": "minecraft:entity/wolf/wolf_tame",
+							"angry": "minecraft:entity/wolf/wolf_angry"
+						},
+						"spawn_conditions": []
+					})json");
+
+				WriteFile(
+					"data/minecraft/zombie_nautilus_variant/warm.json",
+					R"json({
+						"model": "warm",
+						"asset_id": "minecraft:entity/nautilus/zombie_warm",
+						"spawn_conditions": []
+					})json");
+			}
+
 			[[nodiscard]] MinecraftDataCorpus MakeCorpus(
 				std::string_view version = "1.21.11",
 				std::int32_t protocol_version = 774) const {
@@ -201,7 +291,9 @@ namespace Aurore::Tests {
 
 		EXPECT_TRUE((*result)->GetBlocks().Empty());
 		EXPECT_TRUE((*result)->GetItems().Empty());
-		EXPECT_TRUE((*result)->GetNetworkRegistries().Empty());
+		EXPECT_EQ((*result)->GetNetworkRegistries().Size(), 9u);
+		EXPECT_EQ((*result)->GetNetworkRegistries().GetTotalEntryCount(), 9u);
+		EXPECT_EQ((*result)->GetNetworkRegistries().GetEntriesWithDataCount(), 9u);
 
 		const auto& dimensions = (*result)->GetDimensionTypes();
 		ASSERT_EQ(dimensions.Size(), 2u);
@@ -313,6 +405,79 @@ namespace Aurore::Tests {
 		ASSERT_NE(frozen_water->AsInt(), nullptr);
 		EXPECT_EQ(*frozen_water->AsInt(), 3750089);
 		EXPECT_EQ(ReadRequiredText(*frozen_effects, u"grass_color_modifier"), "swamp");
+
+		const auto& network = (*result)->GetNetworkRegistries();
+
+		const auto cat_registry_key = ParseRequired("minecraft:cat_variant");
+		const auto* cat_registry = network.Find(cat_registry_key);
+		ASSERT_NE(cat_registry, nullptr);
+
+		const auto cat_key = ParseRequired("minecraft:black");
+		const auto* cat = cat_registry->Find(cat_key);
+		ASSERT_NE(cat, nullptr);
+		ASSERT_TRUE(cat->Value.has_value());
+		EXPECT_EQ(ReadRequiredText(*cat->Value, u"asset_id"), "minecraft:entity/cat/black");
+		EXPECT_FALSE(cat->Value->Contains(u"spawn_conditions"));
+
+		const auto cow_registry_key = ParseRequired("minecraft:cow_variant");
+		const auto* cow_registry = network.Find(cow_registry_key);
+		ASSERT_NE(cow_registry, nullptr);
+
+		const auto cow_key = ParseRequired("minecraft:warm");
+		const auto* cow = cow_registry->Find(cow_key);
+		ASSERT_NE(cow, nullptr);
+		ASSERT_TRUE(cow->Value.has_value());
+		EXPECT_EQ(ReadRequiredText(*cow->Value, u"model"), "warm");
+		EXPECT_EQ(ReadRequiredText(*cow->Value, u"asset_id"), "minecraft:entity/cow/warm");
+		EXPECT_FALSE(cow->Value->Contains(u"spawn_conditions"));
+
+		const auto wolf_registry_key = ParseRequired("minecraft:wolf_variant");
+		const auto* wolf_registry = network.Find(wolf_registry_key);
+		ASSERT_NE(wolf_registry, nullptr);
+
+		const auto wolf_key = ParseRequired("minecraft:pale");
+		const auto* wolf = wolf_registry->Find(wolf_key);
+		ASSERT_NE(wolf, nullptr);
+		ASSERT_TRUE(wolf->Value.has_value());
+
+		const auto* assets_value = wolf->Value->Find(u"assets");
+		ASSERT_NE(assets_value, nullptr);
+		const auto* assets = assets_value->AsCompound();
+		ASSERT_NE(assets, nullptr);
+		EXPECT_EQ(ReadRequiredText(*assets, u"wild"), "minecraft:entity/wolf/wolf");
+		EXPECT_EQ(ReadRequiredText(*assets, u"tame"), "minecraft:entity/wolf/wolf_tame");
+		EXPECT_EQ(ReadRequiredText(*assets, u"angry"), "minecraft:entity/wolf/wolf_angry");
+
+		const auto sound_registry_key = ParseRequired("minecraft:wolf_sound_variant");
+		const auto* sound_registry = network.Find(sound_registry_key);
+		ASSERT_NE(sound_registry, nullptr);
+
+		const auto classic_key = ParseRequired("minecraft:classic");
+		const auto* classic = sound_registry->Find(classic_key);
+		ASSERT_NE(classic, nullptr);
+		ASSERT_TRUE(classic->Value.has_value());
+		EXPECT_EQ(ReadRequiredText(*classic->Value, u"ambient_sound"), "minecraft:entity.wolf.ambient");
+		EXPECT_EQ(ReadRequiredText(*classic->Value, u"whine_sound"), "minecraft:entity.wolf.whine");
+
+		const auto painting_registry_key = ParseRequired("minecraft:painting_variant");
+		const auto* painting_registry = network.Find(painting_registry_key);
+		ASSERT_NE(painting_registry, nullptr);
+
+		const auto painting_key = ParseRequired("minecraft:kebab");
+		const auto* painting = painting_registry->Find(painting_key);
+		ASSERT_NE(painting, nullptr);
+		ASSERT_TRUE(painting->Value.has_value());
+
+		const auto* width = painting->Value->Find(u"width");
+		ASSERT_NE(width, nullptr);
+		ASSERT_NE(width->AsInt(), nullptr);
+		EXPECT_EQ(*width->AsInt(), 1);
+
+		const auto* title_value = painting->Value->Find(u"title");
+		ASSERT_NE(title_value, nullptr);
+		const auto* title = title_value->AsCompound();
+		ASSERT_NE(title, nullptr);
+		EXPECT_EQ(ReadRequiredText(*title, u"translate"), "painting.minecraft.kebab.title");
 	}
 
 	TEST_F(VanillaDataImporterTests, RejectsUnsupportedMinecraftVersion) {
@@ -400,4 +565,35 @@ namespace Aurore::Tests {
 		ASSERT_TRUE(result.error().Key.has_value());
 		EXPECT_EQ(*result.error().Key, ParseRequired("minecraft:overworld"));
 	}
+
+	TEST_F(VanillaDataImporterTests, RejectsMissingNetworkRegistrySource) {
+		std::filesystem::remove_all(m_Root / "data" / "minecraft" / "cat_variant");
+
+		const auto result = VanillaDataImporter::Import(MakeCorpus(), 1);
+
+		ASSERT_FALSE(result.has_value());
+		EXPECT_EQ(result.error().Code, VanillaDataImportErrorCode::MissingRegistrySource);
+		EXPECT_EQ(result.error().Stage, VanillaDataImportStage::NetworkRegistries);
+		EXPECT_EQ(result.error().Path, m_Root / "data" / "minecraft" / "cat_variant");
+	}
+
+	TEST_F(VanillaDataImporterTests, RejectsUnexpectedNetworkRegistryField) {
+		WriteFile(
+			"data/minecraft/cat_variant/black.json",
+			R"json({
+				"asset_id": "minecraft:entity/cat/black",
+				"spawn_conditions": [],
+				"future_field": true
+			})json");
+
+		const auto result = VanillaDataImporter::Import(MakeCorpus(), 1);
+
+		ASSERT_FALSE(result.has_value());
+		EXPECT_EQ(result.error().Code, VanillaDataImportErrorCode::UnexpectedField);
+		EXPECT_EQ(result.error().Stage, VanillaDataImportStage::NetworkRegistries);
+		EXPECT_EQ(result.error().Field, "future_field");
+		ASSERT_TRUE(result.error().Key.has_value());
+		EXPECT_EQ(*result.error().Key, ParseRequired("minecraft:black"));
+	}
+
 }
