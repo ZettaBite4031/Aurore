@@ -198,6 +198,10 @@ namespace Aurore::Core {
 	void Logger::Init() {
 		if (m_Initialized) return;
 		m_Initialized = true;
+#ifdef NDEBUG
+		ToggleLevel(LogLevel::Trace);
+		ToggleLevel(LogLevel::Debug);
+#endif
 	}
 
 	void Logger::Stop() {
