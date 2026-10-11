@@ -469,7 +469,7 @@ namespace Aurore::Core {
 		}
 
 		if (client.GetProtocolState() != Protocol::ProtocolState::Play || client.GetLifecycleState() != ClientLifecycleState::Play) {
-			AU_ERROR(LogCategory::Core, "Configuration completion for connection {} did not transitino the client into Play. "
+			AU_ERROR(LogCategory::Core, "Configuration completion for connection {} did not transition the client into Play. "
 					"Protocol state: {}, lifecycle state: {}", connection.Value,
 					Protocol::GetProtocolStateName(client.GetProtocolState()),
 					static_cast<unsigned int>(client.GetLifecycleState()));
