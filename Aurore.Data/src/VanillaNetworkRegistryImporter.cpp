@@ -28,6 +28,8 @@ namespace {
 		WolfAssets,
 		WolfSounds,
 		Painting,
+		DirectCodec,
+		Timeline,
 	};
 
 	struct NetworkRegistryDescriptor final {
@@ -35,67 +37,238 @@ namespace {
 		std::string_view SourceRoot;
 		NetworkProjection Projection;
 		std::span<const std::string_view> ModelValues;
+		std::span<const std::string_view> DirectFields;
+		bool RequiredNonEmpty{ false };
 	};
 
-	constexpr std::array<std::string_view, 0> NoModelValues{};
-	constexpr std::array<std::string_view, 2> ColdModelValues{ "normal", "cold" };
-	constexpr std::array<std::string_view, 3> CowModelValues{ "normal", "cold", "warm" };
-	constexpr std::array<std::string_view, 2> ZombieNautilusModelValues{ "normal", "warm" };
+	struct EnvironmentAttributeDescriptor final {
+		std::string_view Key;
+		bool Syncable;
+	};
+
+	constexpr std::array<std::string_view, 0> NoValues{};
+	constexpr std::array<std::string_view, 2> ColdModelValues{ "normal", "cold", };
+	constexpr std::array<std::string_view, 3> CowModelValues{ "normal", "cold", "warm", };
+	constexpr std::array<std::string_view, 2> ZombieNautilusModelValues{ "normal", "warm", };
+	constexpr std::array<std::string_view, 2> ChatTypeFields{ "chat", "narration", };
+	constexpr std::array<std::string_view, 3> TrimPatternFields{ "asset_id", "description", "decal", };
+	constexpr std::array<std::string_view, 3> TrimMaterialFields{ "asset_name", "override_armor_assets", "description", };
+	constexpr std::array<std::string_view, 5> DamageTypeFields{ "message_id", "scaling", "exhaustion", "effects", "death_message_type", };
+	constexpr std::array<std::string_view, 2> BannerPatternFields{ "asset_id", "translation_key", };
+	constexpr std::array<std::string_view, 11> EnchantmentFields{ "description", "supported_items", "primary_items", "weight", "max_level", "min_cost", "max_cost", "anvil_cost", "slots", "exclusive_set", "effects", };
+	constexpr std::array<std::string_view, 4> JukeboxSongFields{ "sound_event", "description", "length_in_seconds", "comparator_output", };
+	constexpr std::array<std::string_view, 4> InstrumentFields{ "sound_event", "use_duration", "range", "description", };
+	constexpr std::array<std::string_view, 7> TestEnvironmentFields{ "type", "definitions", "setup", "teardown", "rules", "time", "weather", };
+	constexpr std::array<std::string_view, 12> TestInstanceFields{ "type", "function", "environment", "structure", "max_ticks", "setup_ticks", "required", "rotation", "manual_only", "max_attempts", "required_successes", "sky_access", };
+	constexpr std::array<std::string_view, 16> DialogFields{ "type", "title", "external_title", "can_close_with_escape", "pause", "after_action", "body", "inputs", "action", "yes", "no", "dialogs", "exit_action", "columns", "button_width", "actions", };
+	constexpr std::array<std::string_view, 2> TimelineFields{ "period_ticks", "tracks", };
+
+	constexpr std::array EnvironmentAttributes{
+		EnvironmentAttributeDescriptor{ "minecraft:visual/fog_color", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/fog_start_distance", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/fog_end_distance", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/sky_fog_end_distance", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/cloud_fog_end_distance", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/water_fog_color", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/water_fog_start_distance", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/water_fog_end_distance", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/sky_color", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/sunrise_sunset_color", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/cloud_color", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/cloud_height", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/sun_angle", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/moon_angle", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/star_angle", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/moon_phase", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/star_brightness", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/sky_light_color", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/sky_light_factor", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/default_dripstone_particle", true },
+		EnvironmentAttributeDescriptor{ "minecraft:visual/ambient_particles", true },
+		EnvironmentAttributeDescriptor{ "minecraft:audio/background_music", true },
+		EnvironmentAttributeDescriptor{ "minecraft:audio/music_volume", true },
+		EnvironmentAttributeDescriptor{ "minecraft:audio/ambient_sounds", true },
+		EnvironmentAttributeDescriptor{ "minecraft:audio/firefly_bush_sounds", true },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/sky_light_level", true },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/can_start_raid", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/water_evaporates", true },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/bed_rule", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/respawn_anchor_works", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/nether_portal_spawns_piglin", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/fast_lava", true },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/increased_fire_burnout", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/eyeblossom_open", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/turtle_egg_hatch_chance", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/piglins_zombify", true },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/snow_golem_melts", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/creaking_active", true },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/surface_slime_spawn_chance", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/cat_waking_up_gift_chance", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/bees_stay_in_hive", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/monsters_burn", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/can_pillager_patrol_spawn", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/villager_activity", false },
+		EnvironmentAttributeDescriptor{ "minecraft:gameplay/baby_villager_activity", false },
+	};
+
+
 
 	constexpr std::array NetworkRegistries{
 		NetworkRegistryDescriptor{
-			.RegistryKey = "minecraft:cat_variant",
-			.SourceRoot = "cat_variant",
-			.Projection = NetworkProjection::ResourceTexture,
-			.ModelValues = NoModelValues,
+			.RegistryKey = "minecraft:chat_type",
+			.SourceRoot = "chat_type",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = ChatTypeFields,
 		},
 		NetworkRegistryDescriptor{
-			.RegistryKey = "minecraft:chicken_variant",
-			.SourceRoot = "chicken_variant",
-			.Projection = NetworkProjection::ModelAndTexture,
-			.ModelValues = ColdModelValues,
+			.RegistryKey = "minecraft:trim_pattern",
+			.SourceRoot = "trim_pattern",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = TrimPatternFields,
 		},
 		NetworkRegistryDescriptor{
-			.RegistryKey = "minecraft:cow_variant",
-			.SourceRoot = "cow_variant",
-			.Projection = NetworkProjection::ModelAndTexture,
-			.ModelValues = CowModelValues,
+			.RegistryKey = "minecraft:trim_material",
+			.SourceRoot = "trim_material",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = TrimMaterialFields,
 		},
 		NetworkRegistryDescriptor{
-			.RegistryKey = "minecraft:frog_variant",
-			.SourceRoot = "frog_variant",
-			.Projection = NetworkProjection::ResourceTexture,
-			.ModelValues = NoModelValues,
+			.RegistryKey = "minecraft:wolf_variant",
+			.SourceRoot = "wolf_variant",
+			.Projection = NetworkProjection::WolfAssets,
+			.ModelValues = NoValues,
+			.DirectFields = NoValues,
+			.RequiredNonEmpty = true,
 		},
 		NetworkRegistryDescriptor{
-			.RegistryKey = "minecraft:painting_variant",
-			.SourceRoot = "painting_variant",
-			.Projection = NetworkProjection::Painting,
-			.ModelValues = NoModelValues,
+			.RegistryKey = "minecraft:wolf_sound_variant",
+			.SourceRoot = "wolf_sound_variant",
+			.Projection = NetworkProjection::WolfSounds,
+			.ModelValues = NoValues,
+			.DirectFields = NoValues,
+			.RequiredNonEmpty = true,
 		},
 		NetworkRegistryDescriptor{
 			.RegistryKey = "minecraft:pig_variant",
 			.SourceRoot = "pig_variant",
 			.Projection = NetworkProjection::ModelAndTexture,
 			.ModelValues = ColdModelValues,
+			.DirectFields = NoValues,
+			.RequiredNonEmpty = true,
 		},
 		NetworkRegistryDescriptor{
-			.RegistryKey = "minecraft:wolf_sound_variant",
-			.SourceRoot = "wolf_sound_variant",
-			.Projection = NetworkProjection::WolfSounds,
-			.ModelValues = NoModelValues,
+			.RegistryKey = "minecraft:frog_variant",
+			.SourceRoot = "frog_variant",
+			.Projection = NetworkProjection::ResourceTexture,
+			.ModelValues = NoValues,
+			.DirectFields = NoValues,
+			.RequiredNonEmpty = true,
 		},
 		NetworkRegistryDescriptor{
-			.RegistryKey = "minecraft:wolf_variant",
-			.SourceRoot = "wolf_variant",
-			.Projection = NetworkProjection::WolfAssets,
-			.ModelValues = NoModelValues,
+			.RegistryKey = "minecraft:cat_variant",
+			.SourceRoot = "cat_variant",
+			.Projection = NetworkProjection::ResourceTexture,
+			.ModelValues = NoValues,
+			.DirectFields = NoValues,
+			.RequiredNonEmpty = true,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:cow_variant",
+			.SourceRoot = "cow_variant",
+			.Projection = NetworkProjection::ModelAndTexture,
+			.ModelValues = CowModelValues,
+			.DirectFields = NoValues,
+			.RequiredNonEmpty = true,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:chicken_variant",
+			.SourceRoot = "chicken_variant",
+			.Projection = NetworkProjection::ModelAndTexture,
+			.ModelValues = ColdModelValues,
+			.DirectFields = NoValues,
+			.RequiredNonEmpty = true,
 		},
 		NetworkRegistryDescriptor{
 			.RegistryKey = "minecraft:zombie_nautilus_variant",
 			.SourceRoot = "zombie_nautilus_variant",
 			.Projection = NetworkProjection::ModelAndTexture,
 			.ModelValues = ZombieNautilusModelValues,
+			.DirectFields = NoValues,
+			.RequiredNonEmpty = true,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:painting_variant",
+			.SourceRoot = "painting_variant",
+			.Projection = NetworkProjection::Painting,
+			.ModelValues = NoValues,
+			.DirectFields = NoValues,
+			.RequiredNonEmpty = true,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:damage_type",
+			.SourceRoot = "damage_type",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = DamageTypeFields,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:banner_pattern",
+			.SourceRoot = "banner_pattern",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = BannerPatternFields,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:enchantment",
+			.SourceRoot = "enchantment",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = EnchantmentFields,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:jukebox_song",
+			.SourceRoot = "jukebox_song",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = JukeboxSongFields,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:instrument",
+			.SourceRoot = "instrument",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = InstrumentFields,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:test_environment",
+			.SourceRoot = "test_environment",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = TestEnvironmentFields,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:test_instance",
+			.SourceRoot = "test_instance",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = TestInstanceFields,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:dialog",
+			.SourceRoot = "dialog",
+			.Projection = NetworkProjection::DirectCodec,
+			.ModelValues = NoValues,
+			.DirectFields = DialogFields,
+		},
+		NetworkRegistryDescriptor{
+			.RegistryKey = "minecraft:timeline",
+			.SourceRoot = "timeline",
+			.Projection = NetworkProjection::Timeline,
+			.ModelValues = NoValues,
+			.DirectFields = TimelineFields,
 		},
 	};
 
@@ -105,7 +278,7 @@ namespace {
 			return std::unexpected(Aurore::Data::Detail::MakeEntryError(VanillaDataImportErrorCode::MissingField, context, std::string{ field }));
 
 		if (!value->is_string())
-			return std::unexpected(Aurore::Data::Detail::MakeEntryError(VanillaDataImportErrorCode::InvalidFieldType, context, std::string{ field },
+			return std::unexpected(Aurore::Data::Detail::MakeEntryError( VanillaDataImportErrorCode::InvalidFieldType, context, std::string{ field },
 				"expected resource-location string"));
 
 		std::string text{ value->as_string().data(), value->as_string().size() };
@@ -335,6 +508,80 @@ namespace {
 		return output;
 	}
 
+	[[nodiscard]] std::expected<NbtCompound, VanillaDataImportError> ProjectDirectCodec(const Sonnet::value& source, const NetworkRegistryDescriptor& descriptor, const VanillaRegistryEntryContext& context) {
+		const auto fields = Aurore::Data::Detail::ValidateObjectFields(source, descriptor.DirectFields, context);
+		if (!fields) return std::unexpected(fields.error());
+
+		NbtCompound output;
+		for (const auto& [name, value] : source.as_object()) {
+			const std::string_view field{ name.data(), name.size() };
+
+			auto nbt_name = Aurore::Data::Detail::MakeNbtString(field, field, context);
+			if (!nbt_name) return std::unexpected(nbt_name.error());
+
+			auto converted = Aurore::Data::Detail::ConvertJsonToNbt(value, field, context);
+			if (!converted) return std::unexpected(converted.error());
+
+			output.Set(std::move(*nbt_name), std::move(*converted));
+		}
+
+		return output;
+	}
+
+	[[nodiscard]] const EnvironmentAttributeDescriptor* FindEnvironmentAttribute(const ResourceLocation& key) noexcept {
+		const auto serialized = key.ToString();
+		for (const auto& descriptor : EnvironmentAttributes)
+			if (descriptor.Key == serialized)
+				return &descriptor;
+		return nullptr;
+	}
+
+	[[nodiscard]] std::expected<NbtCompound, VanillaDataImportError> ProjectTimeline(const Sonnet::value& source, const NetworkRegistryDescriptor& descriptor, const VanillaRegistryEntryContext& context) {
+		const auto fields = Aurore::Data::Detail::ValidateObjectFields(source, descriptor.DirectFields, context);
+		if (!fields) return std::unexpected(fields.error());
+
+		NbtCompound output;
+		const auto period = SetProjectedField(output, source, "period_ticks", context, false);
+		if (!period) return std::unexpected(period.error());
+
+		const auto* tracks = Aurore::Data::Detail::FindField(source, "tracks");
+		if (tracks == nullptr) return output;
+
+		if (!tracks->is_object())
+			return std::unexpected(Aurore::Data::Detail::MakeEntryError(VanillaDataImportErrorCode::InvalidFieldType, context, "tracks",
+				"expected JSON object"));
+
+		NbtCompound network_tracks;
+		for (const auto& [name, value] : tracks->as_object()) {
+			const std::string_view field{ name.data(), name.size() };
+
+			const auto attribute_key = ResourceLocation::Parse(field);
+			if (!attribute_key)
+				return std::unexpected(Aurore::Data::Detail::MakeEntryError(VanillaDataImportErrorCode::InvalidResourceLocation, context, std::string{ field },
+					"timeline track key is not a valid environment attribute resource location"));
+
+			const auto* attribute = FindEnvironmentAttribute(*attribute_key);
+			if (attribute == nullptr)
+				return std::unexpected(Aurore::Data::Detail::MakeEntryError(VanillaDataImportErrorCode::InvalidFieldValue, context, std::string{ field },
+					"timeline references an unknown Minecraft 1.21.11 environment attribute"));
+
+			if (!attribute->Syncable) continue;
+
+			auto nbt_name = Aurore::Data::Detail::MakeNbtString(field, field, context);
+			if (!nbt_name) return std::unexpected(nbt_name.error());
+
+			auto converted = Aurore::Data::Detail::ConvertJsonToNbt(value, std::string{ "tracks." }.append(field), context);
+			if (!converted) return std::unexpected(converted.error());
+
+			network_tracks.Set(std::move(*nbt_name), std::move(*converted));
+		}
+
+		if (!network_tracks.Empty())
+			output.Set(NbtString{ u"tracks" }, NbtValue::Compound(std::move(network_tracks)));
+
+		return output;
+	}
+
 	[[nodiscard]] std::expected<NbtCompound, VanillaDataImportError> ProjectNetworkEntry(const Sonnet::value& source, const NetworkRegistryDescriptor& descriptor, const VanillaRegistryEntryContext& context) {
 		switch (descriptor.Projection) {
 		case NetworkProjection::ResourceTexture: return ProjectResourceTexture(source, context);
@@ -342,6 +589,8 @@ namespace {
 		case NetworkProjection::WolfAssets: return ProjectWolfAssets(source, context);
 		case NetworkProjection::WolfSounds: return ProjectWolfSounds(source, context);
 		case NetworkProjection::Painting: return ProjectPainting(source, context);
+		case NetworkProjection::DirectCodec: return ProjectDirectCodec(source, descriptor, context);
+		case NetworkProjection::Timeline: return ProjectTimeline(source, descriptor, context);
 		}
 		std::unreachable();
 	}
@@ -354,15 +603,21 @@ namespace Aurore::Data::Detail {
 			if (!registry_key) {
 				auto error = MakeImportError(VanillaDataImportErrorCode::InvalidResourceLocation, corpus, generation, VanillaDataImportStage::NetworkRegistries);
 				error.Field = std::string{ descriptor.RegistryKey };
-				error.Detail = "build-in network registry descriptor contains an invalid key";
+				error.Detail = "built-in network registry descriptor contains an invalid key";
 				return std::unexpected(std::move(error));
 			}
 
+			std::vector<VanillaRegistrySourceEntry> source_entries;
 			auto entries = DiscoverRegistryEntries(corpus, generation, VanillaDataImportStage::NetworkRegistries, std::filesystem::path{ descriptor.SourceRoot });
-			if (!entries) return std::unexpected(entries.error());
+			if (entries) source_entries = std::move(*entries);
+			else {
+				const auto code = entries.error().Code;
+				const bool absent_or_empty = code == VanillaDataImportErrorCode::MissingRegistrySource || code == VanillaDataImportErrorCode::EmptyRegistrySource;
+				if (descriptor.RequiredNonEmpty || !absent_or_empty) return std::unexpected(entries.error());
+			}
 
 			auto registry = builder.NetworkRegistries().CreateRegistryBuilder(*registry_key);
-			for (const auto& entry : *entries) {
+			for (const auto& entry : source_entries) {
 				const VanillaRegistryEntryContext context{
 					.Corpus = corpus,
 					.Generation = generation,

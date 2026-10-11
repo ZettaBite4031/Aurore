@@ -13,6 +13,7 @@
 namespace Aurore::Tests {
 	namespace {
 		using Aurore::Protocol::Protocol774RegistryManifest;
+		using Aurore::Protocol::RegistryCompatibilityEvidence;
 		using Aurore::Protocol::RegistryCompatibilityInventoryEntry;
 		using Aurore::Protocol::RegistryCompatibilityManifest;
 		using Aurore::Protocol::RegistryCompatibilityRule;
@@ -23,14 +24,14 @@ namespace Aurore::Tests {
 		using Aurore::Protocol::RegistryManifestErrorCode;
 		using Aurore::Protocol::RegistryPresence;
 		using Aurore::Protocol::RegistryRepresentation;
-		using Aurore::Protocol::RegistryTagPolicy;
 		using Aurore::Protocol::RegistrySnapshotInventoryAdapter;
-		using Aurore::Util::ResourceLocation;
-		using Aurore::Util::RegistrySnapshotBuilder;
+		using Aurore::Protocol::RegistryTagPolicy;
 		using Aurore::Util::DimensionTypeDefinition;
 		using Aurore::Util::NbtCompound;
 		using Aurore::Util::NbtString;
 		using Aurore::Util::NbtValue;
+		using Aurore::Util::RegistrySnapshotBuilder;
+		using Aurore::Util::ResourceLocation;
 
 		NbtCompound MakeData(std::int32_t generation_marker) {
 			NbtCompound data;
@@ -38,60 +39,51 @@ namespace Aurore::Tests {
 			return data;
 		}
 
-		[[nodiscard]] ResourceLocation Location(
-			std::string_view value) {
-
+		[[nodiscard]] ResourceLocation Location(std::string_view value) {
 			return ResourceLocation::Parse(value).value();
 		}
 
-		[[nodiscard]] std::vector<
-			RegistryCompatibilityInventoryEntry>
-			BuildCompleteInventory(
-				const RegistryCompatibilityManifest& manifest) {
-
+		[[nodiscard]] std::vector<RegistryCompatibilityInventoryEntry>
+		BuildCompleteInventory(const RegistryCompatibilityManifest& manifest) {
 			std::vector<RegistryCompatibilityInventoryEntry> result;
 
 			for (const auto& rule : manifest.GetRules()) {
 				if (rule.Presence == RegistryPresence::Optional
-					&& rule.EntryData
-					== RegistryEntryDataPolicy::Forbidden) {
+					&& rule.EntryData == RegistryEntryDataPolicy::Forbidden)
 					continue;
-				}
 
 				const auto entry_count =
 					std::max<std::size_t>(
 						rule.MinimumEntries,
-						rule.EntryData
-						== RegistryEntryDataPolicy::Forbidden
-						? 0
-						: 1);
+						rule.EntryData == RegistryEntryDataPolicy::Forbidden
+							? 0
+							: 1);
 
 				result.push_back(
 					RegistryCompatibilityInventoryEntry{
 						.Key = rule.Key,
 						.EntryCount = entry_count,
 						.EntriesWithData =
-							rule.EntryData
-								== RegistryEntryDataPolicy::Required
+							rule.EntryData == RegistryEntryDataPolicy::Required
 								? entry_count
 								: 0,
-						.TagCount = rule.Tags == RegistryTagPolicy::Required ? 1ul : 0ul,
+						.TagCount =
+							rule.Tags == RegistryTagPolicy::Required
+								? 1ul
+								: 0ul,
 					});
 			}
 
 			return result;
 		}
 
-		[[nodiscard]] RegistryCompatibilityRule MakeRule(
-			std::string_view key) {
-
+		[[nodiscard]] RegistryCompatibilityRule MakeRule(std::string_view key) {
 			return RegistryCompatibilityRule{
 				.Key = Location(key),
 				.Presence = RegistryPresence::Required,
 				.EntryData = RegistryEntryDataPolicy::Required,
 				.Tags = RegistryTagPolicy::Optional,
-				.Representation =
-					RegistryRepresentation::GenericNetwork,
+				.Representation = RegistryRepresentation::GenericNetwork,
 				.MinimumEntries = 1,
 				.SchemaContract = "aurore_test:schema",
 				.SourceCodec = "aurore_test:codec",
@@ -111,7 +103,7 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			manifest->GetCompleteness(),
 			RegistryManifestCompleteness::Provisional);
-		EXPECT_EQ(manifest->GetRules().size(), 13u);
+		EXPECT_EQ(manifest->GetRules().size(), 25u);
 	}
 
 	TEST(
@@ -125,9 +117,12 @@ namespace Aurore::Tests {
 			manifest->Find(Location("minecraft:dimension_type"));
 		const auto* cat_variant =
 			manifest->Find(Location("minecraft:cat_variant"));
+		const auto* timeline =
+			manifest->Find(Location("minecraft:timeline"));
 
 		ASSERT_NE(dimension_type, nullptr);
 		ASSERT_NE(cat_variant, nullptr);
+		ASSERT_NE(timeline, nullptr);
 
 		EXPECT_EQ(
 			dimension_type->Representation,
@@ -135,13 +130,20 @@ namespace Aurore::Tests {
 		EXPECT_EQ(
 			cat_variant->Representation,
 			RegistryRepresentation::GenericNetwork);
+		EXPECT_EQ(
+			timeline->Representation,
+			RegistryRepresentation::GenericNetwork);
+
+		EXPECT_EQ(dimension_type->MinimumEntries, 1u);
+		EXPECT_EQ(cat_variant->MinimumEntries, 1u);
+		EXPECT_EQ(timeline->MinimumEntries, 0u);
 
 		EXPECT_EQ(
-			dimension_type->MinimumEntries,
-			1u);
+			timeline->Evidence,
+			RegistryCompatibilityEvidence::ProtocolContract);
 		EXPECT_EQ(
-			cat_variant->MinimumEntries,
-			1u);
+			timeline->SourceCodec,
+			"Timeline.NETWORK_CODEC");
 	}
 
 	TEST(
@@ -239,8 +241,7 @@ namespace Aurore::Tests {
 		ASSERT_FALSE(result.has_value());
 		EXPECT_EQ(
 			result.error().Code,
-			RegistryInventoryErrorCode::
-			MissingRequiredEntryData);
+			RegistryInventoryErrorCode::MissingRequiredEntryData);
 		EXPECT_EQ(result.error().Key, key);
 		EXPECT_EQ(result.error().ObservedValue, 0u);
 		EXPECT_EQ(result.error().RequiredValue, 1u);
@@ -254,6 +255,7 @@ namespace Aurore::Tests {
 		ASSERT_TRUE(manifest.has_value());
 
 		auto inventory = BuildCompleteInventory(*manifest);
+
 		inventory.push_back(
 			RegistryCompatibilityInventoryEntry{
 				.Key = Location("minecraft:unclassified_registry"),
@@ -317,9 +319,6 @@ namespace Aurore::Tests {
 
 		RegistrySnapshotBuilder snapshot_builder;
 
-		/*
-			Typed registry: minecraft:dimension_type
-		*/
 		ASSERT_TRUE(
 			snapshot_builder.DimensionTypes().Declare(
 				Location("minecraft:overworld"),
@@ -327,9 +326,6 @@ namespace Aurore::Tests {
 					.Data = MakeData(1),
 				}).has_value());
 
-		/*
-			Generic registry: minecraft:cat_variant
-		*/
 		const auto cat_registry_key =
 			Location("minecraft:cat_variant");
 
@@ -357,9 +353,6 @@ namespace Aurore::Tests {
 			.Declare(std::move(*cat_registry))
 			.has_value());
 
-		/*
-			Generic tag section for minecraft:cat_variant.
-		*/
 		auto cat_tags =
 			snapshot_builder.NetworkRegistryTags()
 			.CreateSectionBuilder(cat_registry_key);
@@ -382,26 +375,17 @@ namespace Aurore::Tests {
 
 		ASSERT_TRUE(snapshot.has_value());
 
-		/*
-			The manifest order is intentionally dimension_type followed
-			by cat_variant. The resulting inventory must preserve this
-			order regardless of the snapshot's internal representation.
-		*/
 		auto dimension_rule =
 			MakeRule("minecraft:dimension_type");
 
 		dimension_rule.Presence =
 			RegistryPresence::Required;
-
 		dimension_rule.EntryData =
 			RegistryEntryDataPolicy::Required;
-
 		dimension_rule.Tags =
 			RegistryTagPolicy::Optional;
-
 		dimension_rule.Representation =
 			RegistryRepresentation::TypedDomain;
-
 		dimension_rule.MinimumEntries = 1;
 
 		auto cat_rule =
@@ -409,16 +393,12 @@ namespace Aurore::Tests {
 
 		cat_rule.Presence =
 			RegistryPresence::Required;
-
 		cat_rule.EntryData =
 			RegistryEntryDataPolicy::Required;
-
 		cat_rule.Tags =
 			RegistryTagPolicy::Required;
-
 		cat_rule.Representation =
 			RegistryRepresentation::GenericNetwork;
-
 		cat_rule.MinimumEntries = 1;
 
 		auto manifest =
@@ -441,49 +421,25 @@ namespace Aurore::Tests {
 		ASSERT_TRUE(inventory.has_value());
 		ASSERT_EQ(inventory->size(), 2u);
 
-		/*
-			Typed dimension-type registry.
-		*/
 		const auto& dimension_inventory =
 			(*inventory)[0];
 
 		EXPECT_EQ(
 			dimension_inventory.Key,
 			Location("minecraft:dimension_type"));
+		EXPECT_EQ(dimension_inventory.EntryCount, 1u);
+		EXPECT_EQ(dimension_inventory.EntriesWithData, 1u);
+		EXPECT_EQ(dimension_inventory.TagCount, 0u);
 
-		EXPECT_EQ(
-			dimension_inventory.EntryCount,
-			1u);
-
-		EXPECT_EQ(
-			dimension_inventory.EntriesWithData,
-			1u);
-
-		EXPECT_EQ(
-			dimension_inventory.TagCount,
-			0u);
-
-		/*
-			Generic cat-variant registry.
-		*/
 		const auto& cat_inventory =
 			(*inventory)[1];
 
 		EXPECT_EQ(
 			cat_inventory.Key,
 			Location("minecraft:cat_variant"));
-
-		EXPECT_EQ(
-			cat_inventory.EntryCount,
-			2u);
-
-		EXPECT_EQ(
-			cat_inventory.EntriesWithData,
-			2u);
-
-		EXPECT_EQ(
-			cat_inventory.TagCount,
-			1u);
+		EXPECT_EQ(cat_inventory.EntryCount, 2u);
+		EXPECT_EQ(cat_inventory.EntriesWithData, 2u);
+		EXPECT_EQ(cat_inventory.TagCount, 1u);
 
 		const auto validation =
 			RegistryCompatibilityValidator::Validate(
@@ -492,7 +448,6 @@ namespace Aurore::Tests {
 
 		ASSERT_TRUE(validation.has_value())
 			<< "Registry validation failed with code "
-			<< static_cast<int>(
-				validation.error().Code);
+			<< static_cast<int>(validation.error().Code);
 	}
 }

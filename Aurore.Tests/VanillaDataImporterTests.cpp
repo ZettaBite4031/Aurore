@@ -255,6 +255,135 @@ namespace Aurore::Tests {
 						"asset_id": "minecraft:entity/nautilus/zombie_warm",
 						"spawn_conditions": []
 					})json");
+
+				WriteFile(
+					"data/minecraft/chat_type/chat.json",
+					R"json({
+						"chat": {
+							"translation_key": "chat.type.text",
+							"parameters": ["sender", "content"]
+						},
+						"narration": {
+							"translation_key": "chat.type.text.narrate",
+							"parameters": ["sender", "content"]
+						}
+					})json");
+
+				WriteFile(
+					"data/minecraft/trim_pattern/sentry.json",
+					R"json({
+						"asset_id": "minecraft:sentry",
+						"description": {
+							"translate": "trim_pattern.minecraft.sentry"
+						},
+						"decal": false
+					})json");
+
+				WriteFile(
+					"data/minecraft/trim_material/quartz.json",
+					R"json({
+						"asset_name": "quartz",
+						"description": {
+							"translate": "trim_material.minecraft.quartz"
+						}
+					})json");
+
+				WriteFile(
+					"data/minecraft/damage_type/generic.json",
+					R"json({
+						"message_id": "generic",
+						"scaling": "when_caused_by_living_non_player",
+						"exhaustion": 0.1
+					})json");
+
+				WriteFile(
+					"data/minecraft/banner_pattern/base.json",
+					R"json({
+						"asset_id": "minecraft:base",
+						"translation_key": "block.minecraft.banner.base"
+					})json");
+
+				WriteFile(
+					"data/minecraft/enchantment/test.json",
+					R"json({
+						"description": {
+							"translate": "enchantment.minecraft.test"
+						},
+						"supported_items": "#minecraft:enchantable/weapon",
+						"weight": 10,
+						"max_level": 1,
+						"min_cost": {
+							"base": 1,
+							"per_level_above_first": 0
+						},
+						"max_cost": {
+							"base": 11,
+							"per_level_above_first": 0
+						},
+						"anvil_cost": 1,
+						"slots": ["mainhand"]
+					})json");
+
+				WriteFile(
+					"data/minecraft/jukebox_song/test.json",
+					R"json({
+						"sound_event": "minecraft:music_disc.13",
+						"description": {
+							"translate": "jukebox_song.minecraft.test"
+						},
+						"length_in_seconds": 178.0,
+						"comparator_output": 1
+					})json");
+
+				WriteFile(
+					"data/minecraft/instrument/test.json",
+					R"json({
+						"sound_event": "minecraft:item.goat_horn.sound.0",
+						"use_duration": 7.0,
+						"range": 256.0,
+						"description": {
+							"translate": "instrument.minecraft.test"
+						}
+					})json");
+
+				WriteFile(
+					"data/minecraft/test_environment/default.json",
+					R"json({
+						"type": "minecraft:time_of_day",
+						"time": 6000
+					})json");
+
+				WriteFile(
+					"data/minecraft/test_instance/basic.json",
+					R"json({
+						"type": "minecraft:block_based",
+						"environment": "minecraft:default",
+						"structure": "minecraft:basic",
+						"max_ticks": 100
+					})json");
+
+				WriteFile(
+					"data/minecraft/dialog/notice.json",
+					R"json({
+						"type": "minecraft:notice",
+						"title": {
+							"text": "Aurore"
+						}
+					})json");
+
+				WriteFile(
+					"data/minecraft/timeline/overworld.json",
+					R"json({
+						"period_ticks": 24000,
+						"tracks": {
+							"minecraft:visual/sky_color": {
+								"value": "#78a7ff"
+							},
+							"minecraft:gameplay/can_start_raid": {
+								"value": true
+							}
+						}
+					})json");
 			}
 
 			[[nodiscard]] MinecraftDataCorpus MakeCorpus(
@@ -291,9 +420,9 @@ namespace Aurore::Tests {
 
 		EXPECT_TRUE((*result)->GetBlocks().Empty());
 		EXPECT_TRUE((*result)->GetItems().Empty());
-		EXPECT_EQ((*result)->GetNetworkRegistries().Size(), 9u);
-		EXPECT_EQ((*result)->GetNetworkRegistries().GetTotalEntryCount(), 9u);
-		EXPECT_EQ((*result)->GetNetworkRegistries().GetEntriesWithDataCount(), 9u);
+		EXPECT_EQ((*result)->GetNetworkRegistries().Size(), 21u);
+		EXPECT_EQ((*result)->GetNetworkRegistries().GetTotalEntryCount(), 21u);
+		EXPECT_EQ((*result)->GetNetworkRegistries().GetEntriesWithDataCount(), 21u);
 
 		const auto& dimensions = (*result)->GetDimensionTypes();
 		ASSERT_EQ(dimensions.Size(), 2u);
@@ -478,6 +607,34 @@ namespace Aurore::Tests {
 		const auto* title = title_value->AsCompound();
 		ASSERT_NE(title, nullptr);
 		EXPECT_EQ(ReadRequiredText(*title, u"translate"), "painting.minecraft.kebab.title");
+
+		const auto damage_registry_key = ParseRequired("minecraft:damage_type");
+		const auto* damage_registry = network.Find(damage_registry_key);
+		ASSERT_NE(damage_registry, nullptr);
+
+		const auto damage_key = ParseRequired("minecraft:generic");
+		const auto* damage = damage_registry->Find(damage_key);
+		ASSERT_NE(damage, nullptr);
+		ASSERT_TRUE(damage->Value.has_value());
+		EXPECT_EQ(ReadRequiredText(*damage->Value, u"message_id"), "generic");
+		EXPECT_EQ(ReadRequiredText(*damage->Value, u"scaling"), "when_caused_by_living_non_player");
+
+		const auto timeline_registry_key = ParseRequired("minecraft:timeline");
+		const auto* timeline_registry = network.Find(timeline_registry_key);
+		ASSERT_NE(timeline_registry, nullptr);
+
+		const auto timeline_key = ParseRequired("minecraft:overworld");
+		const auto* timeline = timeline_registry->Find(timeline_key);
+		ASSERT_NE(timeline, nullptr);
+		ASSERT_TRUE(timeline->Value.has_value());
+
+		const auto* tracks_value = timeline->Value->Find(u"tracks");
+		ASSERT_NE(tracks_value, nullptr);
+		const auto* tracks = tracks_value->AsCompound();
+		ASSERT_NE(tracks, nullptr);
+
+		EXPECT_TRUE(tracks->Contains(u"minecraft:visual/sky_color"));
+		EXPECT_FALSE(tracks->Contains(u"minecraft:gameplay/can_start_raid"));
 	}
 
 	TEST_F(VanillaDataImporterTests, RejectsUnsupportedMinecraftVersion) {
@@ -594,6 +751,42 @@ namespace Aurore::Tests {
 		EXPECT_EQ(result.error().Field, "future_field");
 		ASSERT_TRUE(result.error().Key.has_value());
 		EXPECT_EQ(*result.error().Key, ParseRequired("minecraft:black"));
+	}
+
+
+	TEST_F(VanillaDataImporterTests, RejectsUnknownTimelineEnvironmentAttribute) {
+		WriteFile(
+			"data/minecraft/timeline/overworld.json",
+			R"json({
+				"tracks": {
+					"minecraft:visual/future_attribute": {
+						"value": 1
+					}
+				}
+			})json");
+
+		const auto result = VanillaDataImporter::Import(MakeCorpus(), 1);
+
+		ASSERT_FALSE(result.has_value());
+		EXPECT_EQ(result.error().Code, VanillaDataImportErrorCode::InvalidFieldValue);
+		EXPECT_EQ(result.error().Stage, VanillaDataImportStage::NetworkRegistries);
+		EXPECT_EQ(result.error().Field, "minecraft:visual/future_attribute");
+		ASSERT_TRUE(result.error().Key.has_value());
+		EXPECT_EQ(*result.error().Key, ParseRequired("minecraft:overworld"));
+	}
+
+
+	TEST_F(VanillaDataImporterTests, AllowsMissingOptionalEmptyNetworkRegistrySource) {
+		std::filesystem::remove_all(m_Root / "data" / "minecraft" / "test_instance");
+
+		const auto result = VanillaDataImporter::Import(MakeCorpus(), 1);
+
+		ASSERT_TRUE(result.has_value());
+
+		const auto registry_key = ParseRequired("minecraft:test_instance");
+		const auto* registry = (*result)->GetNetworkRegistries().Find(registry_key);
+		ASSERT_NE(registry, nullptr);
+		EXPECT_TRUE(registry->Empty());
 	}
 
 }
