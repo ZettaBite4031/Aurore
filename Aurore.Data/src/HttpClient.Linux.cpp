@@ -63,6 +63,16 @@ namespace {
 		operator=(
 			const UniqueCurl&) = delete;
 
+		UniqueCurl(UniqueCurl&& other) noexcept
+			: m_Handle(std::exchange(other.m_Handle, nullptr)) {}
+
+		UniqueCurl& operator=(UniqueCurl&& other) noexcept {
+			if (this == &other) return *this;
+			if (m_Handle != nullptr) ::curl_easy_cleanup(m_Handle);
+			m_Handle = std::exchange(other.m_Handle, nullptr);
+			return *this;
+		}
+
 		[[nodiscard]]
 		CURL* Get() const noexcept {
 			return m_Handle;
