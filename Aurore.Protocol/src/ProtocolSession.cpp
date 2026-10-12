@@ -331,6 +331,11 @@ namespace Aurore::Protocol {
 		return action;
 	}
 
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Packets::Play::Serverbound::ClientInformation& packet) {
+		m_ClientInformation = packet;
+		return ProtocolAction{};
+	}
+
 	// First Light recognizes ordinary client intent, but doesn't yet implement
 	// gameplay, inventories, entity animation, or authoritative sprint physics.
 	// Those effects belong to Alpha 1, not an accidental pseudo-simulation.

@@ -1,8 +1,9 @@
 #include <Aurore/Protocol/Packets/Play.hpp>
-
 #include <Aurore/Util/ByteBuffer.hpp>
 
 #include <bit>
+#include <cmath>
+#include <utility>
 
 namespace Aurore::Protocol::Packets::Play {
 	namespace {
@@ -12,7 +13,6 @@ namespace Aurore::Protocol::Packets::Play {
 				.HorizontalCollision = (value & 0x02u) != 0,
 			};
 		}
-
 		[[nodiscard]] PlayerInputFlags DecodePlayerInputFlags(std::uint8_t value) noexcept {
 			return PlayerInputFlags{
 				.Forward = (value & 0x01u) != 0,
@@ -24,13 +24,12 @@ namespace Aurore::Protocol::Packets::Play {
 				.Sprint = (value & 0x40u) != 0,
 			};
 		}
-
-		[[nodiscard]] ProtocolResult<Serverbound::Packet> DecodeEmptyPacket(const PacketFrame& frame, Serverbound::Packet packet) {
+		[[nodiscard]] ProtocolResult<Serverbound::Packet> DecodeEmptyPacket(
+			const PacketFrame& frame, Serverbound::Packet packet) {
 			if (!frame.Payload.empty())
 				return std::unexpected(ProtocolError::TrailingPacketData);
 			return packet;
 		}
-
 		void EncodeCommonSpawnInfo(Aurore::Util::ByteBuffer& payload, const Clientbound::CommonSpawnInfo& info) {
 			payload.WriteVarInt(static_cast<std::int32_t>(info.DimensionType));
 			payload.WriteString(info.Dimension.ToString());
@@ -39,16 +38,11 @@ namespace Aurore::Protocol::Packets::Play {
 			payload.WriteUnsignedByte(std::bit_cast<std::uint8_t>(info.PreviousGameMode));
 			payload.WriteBool(info.IsDebug);
 			payload.WriteBool(info.IsFlat);
-
-			/*
-				GlobalPos is deliberately absent for First Light. The boolean is
-				the Optional<GlobalPos> discriminator used by vanilla.
-			*/
+			// The boolean is the optional GlobalPos discriminator.
 			payload.WriteBool(info.HasLastDeathLocation);
 			payload.WriteVarInt(info.PortalCooldown);
 			payload.WriteVarInt(info.SeaLevel);
 		}
-
 		[[nodiscard]] PacketFrame Frame(std::int32_t packet_id, const Aurore::Util::ByteBuffer& bytes) {
 			return PacketFrame{
 				.PacketId = packet_id,
@@ -61,37 +55,29 @@ namespace Aurore::Protocol::Packets::Play {
 		PacketFrame Encode(const BlockChangedAck& packet) {
 			Aurore::Util::ByteBuffer payload;
 			payload.WriteVarInt(packet.Sequence);
-
 			return Frame(BlockChangedAckPacketId, payload);
 		}
 		PacketFrame Encode(const ChunkBatchStart&) {
-			return PacketFrame{ .PacketId = ChunkBatchStartPacketId, };
+			return PacketFrame{ .PacketId = ChunkBatchStartPacketId };
 		}
-
 		PacketFrame Encode(const ChunkBatchFinished& packet) {
 			Aurore::Util::ByteBuffer payload;
 			payload.WriteVarInt(packet.BatchSize);
-
 			return Frame(ChunkBatchFinishedPacketId, payload);
 		}
-
 		PacketFrame Encode(const GameEvent& packet) {
 			Aurore::Util::ByteBuffer payload;
 			payload.WriteUnsignedByte(static_cast<std::uint8_t>(packet.Event));
 			payload.WriteFloat(packet.Value);
-
 			return Frame(GameEventPacketId, payload);
 		}
-
 		PacketFrame Encode(const Login& packet) {
 			Aurore::Util::ByteBuffer payload;
-
 			payload.WriteInt32(packet.PlayerId);
 			payload.WriteBool(packet.Hardcore);
 			payload.WriteVarInt(static_cast<std::int32_t>(packet.Levels.size()));
 			for (const auto& level : packet.Levels)
 				payload.WriteString(level.ToString());
-
 			payload.WriteVarInt(packet.MaximumPlayers);
 			payload.WriteVarInt(packet.ChunkRadius);
 			payload.WriteVarInt(packet.SimulationDistance);
@@ -100,28 +86,21 @@ namespace Aurore::Protocol::Packets::Play {
 			payload.WriteBool(packet.LimitedCrafting);
 			EncodeCommonSpawnInfo(payload, packet.SpawnInfo);
 			payload.WriteBool(packet.EnforcesSecureChat);
-
 			return Frame(LoginPacketId, payload);
 		}
-
 		PacketFrame Encode(const SetChunkCacheCenter& packet) {
 			Aurore::Util::ByteBuffer payload;
 			payload.WriteVarInt(packet.ChunkX);
 			payload.WriteVarInt(packet.ChunkZ);
-
 			return Frame(SetChunkCacheCenterPacketId, payload);
 		}
-
 		PacketFrame Encode(const SetChunkCacheRadius& packet) {
 			Aurore::Util::ByteBuffer payload;
 			payload.WriteVarInt(packet.Radius);
-
 			return Frame(SetChunkCacheRadiusPacketId, payload);
 		}
-
 		PacketFrame Encode(const PlayerPosition& packet) {
 			Aurore::Util::ByteBuffer payload;
-
 			payload.WriteVarInt(packet.TeleportId);
 			payload.WriteDouble(packet.X);
 			payload.WriteDouble(packet.Y);
@@ -131,10 +110,8 @@ namespace Aurore::Protocol::Packets::Play {
 			payload.WriteDouble(packet.VelocityZ);
 			payload.WriteFloat(packet.Yaw);
 			payload.WriteFloat(packet.Pitch);
-
-			/* Relative.SET_STREAM_CODEC is a fixed-width network INT. */
+			// Relative.SET_STREAM_CODEC is a fixed-width network INT.
 			payload.WriteInt32(static_cast<std::int32_t>(packet.RelativeFlags));
-
 			return Frame(PlayerPositionPacketId, payload);
 		}
 	}
@@ -144,19 +121,32 @@ namespace Aurore::Protocol::Packets::Play {
 			Aurore::Util::ByteReader reader(frame.Payload);
 			switch (frame.PacketId) {
 			case AcceptTeleportationPacketId: {
-				const auto teleport_id = reader.ReadVarInt();
-				if (!teleport_id) return std::unexpected(ProtocolError::MalformedPacket);
+				const auto id = reader.ReadVarInt();
+				if (!id) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ AcceptTeleportation{ .TeleportId = *teleport_id } };
+				return Packet{ AcceptTeleportation{ .TeleportId = *id } };
 			}
 			case ChunkBatchReceivedPacketId: {
-				const auto chunks_per_tick = reader.ReadFloat();
-				if (!chunks_per_tick) return std::unexpected(ProtocolError::MalformedPacket);
+				const auto rate = reader.ReadFloat();
+				if (!rate) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ ChunkBatchReceived{ .ChunksPerTick = *chunks_per_tick, } };
+				return Packet{ ChunkBatchReceived{ .ChunksPerTick = *rate } };
 			}
-			case ClientTickEndPacketId:
-				return DecodeEmptyPacket(frame, Packet{ ClientTickEnd{} });
+			case ClientTickEndPacketId: return DecodeEmptyPacket(frame, Packet{ ClientTickEnd{} });
+			case ClientInformationPacketId: {
+				// Configuration and Play carry the same client preferences payload,
+				// but assign different IDs to it. Reuse the validated decoder.
+				auto configuration_frame = frame;
+				configuration_frame.PacketId = Configuration::Serverbound::ClientInformationPacketId;
+				auto decoded = Configuration::Serverbound::Decode(configuration_frame);
+				if (!decoded)
+					return std::unexpected(decoded.error());
+
+				auto* information = std::get_if<Configuration::Serverbound::ClientInformation>(&*decoded);
+				if (information == nullptr)
+					return std::unexpected(ProtocolError::MalformedPacket);
+				return Packet{ std::move(*information) };
+			}
 			case KeepAlivePacketId: {
 				const auto id = reader.ReadInt64();
 				if (!id) return std::unexpected(ProtocolError::MalformedPacket);
@@ -164,47 +154,42 @@ namespace Aurore::Protocol::Packets::Play {
 				return Packet{ KeepAlive{ .Id = *id } };
 			}
 			case MovePlayerPositionPacketId: {
-				const auto x = reader.ReadDouble();
-				const auto y = reader.ReadDouble();
-				const auto z = reader.ReadDouble();
+				const auto x = reader.ReadDouble(), y = reader.ReadDouble(), z = reader.ReadDouble();
 				const auto flags = reader.ReadUnsignedByte();
 				if (!x || !y || !z || !flags) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ MovePlayerPosition{ .X = *x, .Y = *y, .Z = *z, .Flags = DecodeMovementFlags(*flags), } };
+				return Packet{ MovePlayerPosition{ .X = *x, .Y = *y, .Z = *z, .Flags = DecodeMovementFlags(*flags) } };
 			}
 			case MovePlayerPositionRotationPacketId: {
-				const auto x = reader.ReadDouble();
-				const auto y = reader.ReadDouble();
-				const auto z = reader.ReadDouble();
-				const auto yaw = reader.ReadFloat();
-				const auto pitch = reader.ReadFloat();
+				const auto x = reader.ReadDouble(), y = reader.ReadDouble(), z = reader.ReadDouble();
+				const auto yaw = reader.ReadFloat(), pitch = reader.ReadFloat();
 				const auto flags = reader.ReadUnsignedByte();
 				if (!x || !y || !z || !yaw || !pitch || !flags) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ MovePlayerPositionRotation{ .X = *x, .Y = *y, .Z = *z, .Yaw = *yaw, .Pitch = *pitch, .Flags = DecodeMovementFlags(*flags), } };
+				return Packet{ MovePlayerPositionRotation{
+					.X = *x, .Y = *y, .Z = *z, .Yaw = *yaw, .Pitch = *pitch,
+					.Flags = DecodeMovementFlags(*flags) } };
 			}
 			case MovePlayerRotationPacketId: {
-				const auto yaw = reader.ReadFloat();
-				const auto pitch = reader.ReadFloat();
+				const auto yaw = reader.ReadFloat(), pitch = reader.ReadFloat();
 				const auto flags = reader.ReadUnsignedByte();
 				if (!yaw || !pitch || !flags) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ MovePlayerRotation{ .Yaw = *yaw, .Pitch = *pitch, .Flags = DecodeMovementFlags(*flags), } };
+				return Packet{ MovePlayerRotation{ .Yaw = *yaw, .Pitch = *pitch, .Flags = DecodeMovementFlags(*flags) } };
 			}
 			case MovePlayerStatusOnlyPacketId: {
 				const auto flags = reader.ReadUnsignedByte();
 				if (!flags) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ MovePlayerStatusOnly{ .Flags = DecodeMovementFlags(*flags), } };
+				return Packet{ MovePlayerStatusOnly{ .Flags = DecodeMovementFlags(*flags) } };
 			}
 			case PlayerInputPacketId: {
 				const auto flags = reader.ReadUnsignedByte();
 				if (!flags) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ PlayerInput{ .Flags = DecodePlayerInputFlags(*flags), } };
+				return Packet{ PlayerInput{ .Flags = DecodePlayerInputFlags(*flags) } };
 			}
-			case PlayerLoadedPacketId:
-				return DecodeEmptyPacket(frame, Packet{ PlayerLoaded{} });
+			case PlayerLoadedPacketId: return DecodeEmptyPacket(frame, Packet{ PlayerLoaded{} });
 			case PlayerCommandPacketId: {
 				const auto entity = reader.ReadVarInt(), action = reader.ReadVarInt(), boost = reader.ReadVarInt();
 				if (!entity || !action || !boost || *entity < 0 || *action < 0 || *action > 6 || *boost < 0 || *boost > 100)
@@ -216,25 +201,25 @@ namespace Aurore::Protocol::Packets::Play {
 				const auto flags = reader.ReadUnsignedByte();
 				if (!flags || (*flags & 0xFCu) != 0) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ PlayerAbilities{.Flying = (*flags & 0x02u) != 0 } };
+				return Packet{ PlayerAbilities{ .Flying = (*flags & 0x02u) != 0 } };
 			}
 			case SetCarriedItemPacketId: {
 				const auto slot = reader.ReadInt16();
 				if (!slot || *slot < 0 || *slot > 8) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ SetCarriedItem{.Slot = *slot } };
+				return Packet{ SetCarriedItem{ .Slot = *slot } };
 			}
 			case ContainerClosePacketId: {
 				const auto container = reader.ReadVarInt();
 				if (!container || *container < 0) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ ContainerClose{.ContainerId = *container } };
+				return Packet{ ContainerClose{ .ContainerId = *container } };
 			}
 			case SwingPacketId: {
 				const auto hand = reader.ReadVarInt();
 				if (!hand || *hand < 0 || *hand > 1) return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ Swing{.Hand = *hand } };
+				return Packet{ Swing{ .Hand = *hand } };
 			}
 			case PlayerActionPacketId: {
 				const auto action = reader.ReadVarInt();
@@ -244,7 +229,7 @@ namespace Aurore::Protocol::Packets::Play {
 				if (!action || !position || !face || !sequence || *action < 0 || *action > 7 || *face > 5 || *sequence < 0)
 					return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ DeferredInteraction{.PacketId = frame.PacketId, .Sequence = *sequence } };
+				return Packet{ DeferredInteraction{ .PacketId = frame.PacketId, .Sequence = *sequence } };
 			}
 			case UseItemOnPacketId: {
 				const auto hand = reader.ReadVarInt();
@@ -258,7 +243,7 @@ namespace Aurore::Protocol::Packets::Play {
 					|| !std::isfinite(*x) || !std::isfinite(*y) || !std::isfinite(*z))
 					return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ DeferredInteraction{.PacketId = frame.PacketId, .Sequence = *sequence } };
+				return Packet{ DeferredInteraction{ .PacketId = frame.PacketId, .Sequence = *sequence } };
 			}
 			case UseItemPacketId: {
 				const auto hand = reader.ReadVarInt(), sequence = reader.ReadVarInt();
@@ -267,7 +252,7 @@ namespace Aurore::Protocol::Packets::Play {
 					|| !std::isfinite(*yaw) || !std::isfinite(*pitch))
 					return std::unexpected(ProtocolError::MalformedPacket);
 				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
-				return Packet{ DeferredInteraction{.PacketId = frame.PacketId, .Sequence = *sequence } };
+				return Packet{ DeferredInteraction{ .PacketId = frame.PacketId, .Sequence = *sequence } };
 			}
 			case SetCreativeModeSlotPacketId: {
 				// The modern item-component payload is not decoded in First Light.
@@ -276,7 +261,7 @@ namespace Aurore::Protocol::Packets::Play {
 					return std::unexpected(ProtocolError::MalformedPacket);
 				const auto slot = reader.ReadInt16();
 				if (!slot || reader.Empty()) return std::unexpected(ProtocolError::MalformedPacket);
-				return Packet{ DeferredInteraction{.PacketId = frame.PacketId, .Sequence = std::nullopt } };
+				return Packet{ DeferredInteraction{ .PacketId = frame.PacketId, .Sequence = std::nullopt } };
 			}
 			case ContainerClickPacketId: {
 				if (frame.Payload.size() > 64 * 1024)
@@ -289,10 +274,9 @@ namespace Aurore::Protocol::Packets::Play {
 					|| *mode < 0 || *mode > 6 || reader.Empty())
 					return std::unexpected(ProtocolError::MalformedPacket);
 				// Changed slot and hashed-slot data intentionally remain opaque.
-				return Packet{ DeferredInteraction{.PacketId = frame.PacketId, .Sequence = std::nullopt } };
+				return Packet{ DeferredInteraction{ .PacketId = frame.PacketId, .Sequence = std::nullopt } };
 			}
-			default:
-				return std::unexpected(ProtocolError::UnexpectedPacket);
+			default: return std::unexpected(ProtocolError::UnexpectedPacket);
 			}
 		}
 	}

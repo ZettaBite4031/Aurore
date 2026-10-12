@@ -1,14 +1,15 @@
 #pragma once
 
 #include <Aurore/Protocol/PacketFrame.hpp>
+#include <Aurore/Protocol/Packets/Configuration.hpp>
 #include <Aurore/Protocol/ProtocolTypes.hpp>
-
 #include <Aurore/Util/Registry.hpp>
 #include <Aurore/Util/ResourceLocation.hpp>
 
 #include <array>
 #include <compare>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <variant>
 #include <vector>
@@ -16,23 +17,18 @@
 namespace Aurore::Protocol::Packets::Play {
 	inline constexpr std::int32_t TargetProtocolVersion{ 774 };
 
-	enum class Direction : std::uint8_t {
-		Clientbound,
-		Serverbound,
-	};
+	enum class Direction : std::uint8_t { Clientbound, Serverbound };
 
 	struct PacketDescriptor final {
 		std::int32_t Id;
 		std::string_view Name;
 		Direction PacketDirection;
-
 		auto operator<=>(const PacketDescriptor&) const noexcept = default;
 	};
 
 	struct MovementFlags final {
 		bool OnGround{ false };
 		bool HorizontalCollision{ false };
-
 		auto operator<=>(const MovementFlags&) const noexcept = default;
 	};
 
@@ -44,16 +40,10 @@ namespace Aurore::Protocol::Packets::Play {
 		bool Jump{ false };
 		bool Shift{ false };
 		bool Sprint{ false };
-
 		auto operator<=>(const PlayerInputFlags&) const noexcept = default;
 	};
 
-	enum class GameMode : std::int8_t {
-		Survival = 0,
-		Creative = 1,
-		Adventure = 2,
-		Spectator = 3,
-	};
+	enum class GameMode : std::int8_t { Survival = 0, Creative = 1, Adventure = 2, Spectator = 3 };
 
 	namespace Clientbound {
 		inline constexpr std::int32_t BlockChangedAckPacketId{ 0x04 };
@@ -76,46 +66,33 @@ namespace Aurore::Protocol::Packets::Play {
 			PacketDescriptor{ SetChunkCacheRadiusPacketId, "set_chunk_cache_radius", Direction::Clientbound },
 		};
 
-		enum class GameEventType : std::uint8_t {
-			StartWaitingForLevelChunks = 13,
-		};
+		enum class GameEventType : std::uint8_t { StartWaitingForLevelChunks = 13 };
 
 		struct BlockChangedAck final {
 			std::int32_t Sequence{ 0 };
 			bool operator==(const BlockChangedAck&) const noexcept = default;
 		};
-
 		struct ChunkBatchStart final {
 			bool operator==(const ChunkBatchStart&) const noexcept = default;
 		};
-
 		struct ChunkBatchFinished final {
 			std::int32_t BatchSize{ 0 };
-
 			bool operator==(const ChunkBatchFinished&) const noexcept = default;
 		};
-
 		struct GameEvent final {
 			GameEventType Event{ GameEventType::StartWaitingForLevelChunks };
 			float Value{ 0.0F };
-
 			bool operator==(const GameEvent&) const noexcept = default;
 		};
-
-
 		struct SetChunkCacheCenter final {
 			std::int32_t ChunkX{ 0 };
 			std::int32_t ChunkZ{ 0 };
-
 			bool operator==(const SetChunkCacheCenter&) const noexcept = default;
 		};
-
 		struct SetChunkCacheRadius final {
 			std::int32_t Radius{ 2 };
-
 			bool operator==(const SetChunkCacheRadius&) const noexcept = default;
 		};
-
 		struct CommonSpawnInfo final {
 			Aurore::Util::RegistryRuntimeId DimensionType{ 0 };
 			Aurore::Util::ResourceLocation Dimension;
@@ -127,10 +104,8 @@ namespace Aurore::Protocol::Packets::Play {
 			bool HasLastDeathLocation{ false };
 			std::int32_t PortalCooldown{ 0 };
 			std::int32_t SeaLevel{ 63 };
-
 			bool operator==(const CommonSpawnInfo&) const noexcept = default;
 		};
-
 		struct Login final {
 			std::int32_t PlayerId{ 0 };
 			bool Hardcore{ false };
@@ -143,10 +118,8 @@ namespace Aurore::Protocol::Packets::Play {
 			bool LimitedCrafting{ false };
 			CommonSpawnInfo SpawnInfo;
 			bool EnforcesSecureChat{ false };
-
 			bool operator==(const Login&) const noexcept = default;
 		};
-
 		struct PlayerPosition final {
 			std::int32_t TeleportId{ 1 };
 			double X{ 0.0 };
@@ -158,7 +131,6 @@ namespace Aurore::Protocol::Packets::Play {
 			float Yaw{ 0.0F };
 			float Pitch{ 0.0F };
 			std::uint32_t RelativeFlags{ 0 };
-
 			bool operator==(const PlayerPosition&) const noexcept = default;
 		};
 
@@ -176,6 +148,7 @@ namespace Aurore::Protocol::Packets::Play {
 		inline constexpr std::int32_t AcceptTeleportationPacketId{ 0x00 };
 		inline constexpr std::int32_t ChunkBatchReceivedPacketId{ 0x0A };
 		inline constexpr std::int32_t ClientTickEndPacketId{ 0x0C };
+		inline constexpr std::int32_t ClientInformationPacketId{ 0x0D };
 		inline constexpr std::int32_t ContainerClickPacketId{ 0x11 };
 		inline constexpr std::int32_t ContainerClosePacketId{ 0x12 };
 		inline constexpr std::int32_t KeepAlivePacketId{ 0x1B };
@@ -198,6 +171,7 @@ namespace Aurore::Protocol::Packets::Play {
 			PacketDescriptor{ AcceptTeleportationPacketId, "accept_teleportation", Direction::Serverbound },
 			PacketDescriptor{ ChunkBatchReceivedPacketId, "chunk_batch_received", Direction::Serverbound },
 			PacketDescriptor{ ClientTickEndPacketId, "client_tick_end", Direction::Serverbound },
+			PacketDescriptor{ ClientInformationPacketId, "client_information", Direction::Serverbound },
 			PacketDescriptor{ ContainerClickPacketId, "container_click", Direction::Serverbound },
 			PacketDescriptor{ ContainerClosePacketId, "container_close", Direction::Serverbound },
 			PacketDescriptor{ KeepAlivePacketId, "keep_alive", Direction::Serverbound },
@@ -217,93 +191,29 @@ namespace Aurore::Protocol::Packets::Play {
 			PacketDescriptor{ UseItemPacketId, "use_item", Direction::Serverbound },
 		};
 
-		struct AcceptTeleportation final {
-			std::int32_t TeleportId{ 0 };
+		struct AcceptTeleportation final { std::int32_t TeleportId{ 0 }; auto operator<=>(const AcceptTeleportation&) const noexcept = default; };
+		struct ChunkBatchReceived final { float ChunksPerTick{ 0.0F }; bool operator==(const ChunkBatchReceived&) const noexcept = default; };
+		struct ClientTickEnd final { auto operator<=>(const ClientTickEnd&) const noexcept = default; };
+		struct KeepAlive final { std::int64_t Id{ 0 }; auto operator<=>(const KeepAlive&) const noexcept = default; };
+		struct MovePlayerPosition final { double X{ 0.0 }; double Y{ 0.0 }; double Z{ 0.0 }; MovementFlags Flags; bool operator==(const MovePlayerPosition&) const noexcept = default; };
+		struct MovePlayerPositionRotation final { double X{ 0.0 }; double Y{ 0.0 }; double Z{ 0.0 }; float Yaw{ 0.0F }; float Pitch{ 0.0F }; MovementFlags Flags; bool operator==(const MovePlayerPositionRotation&) const noexcept = default; };
+		struct MovePlayerRotation final { float Yaw{ 0.0F }; float Pitch{ 0.0F }; MovementFlags Flags; bool operator==(const MovePlayerRotation&) const noexcept = default; };
+		struct MovePlayerStatusOnly final { MovementFlags Flags; auto operator<=>(const MovePlayerStatusOnly&) const noexcept = default; };
+		struct PlayerInput final { PlayerInputFlags Flags; auto operator<=>(const PlayerInput&) const noexcept = default; };
+		// Both protocol states use the same validated client preference payload.
+		using ClientInformation = Packets::Configuration::Serverbound::ClientInformation;
 
-			auto operator<=>(const AcceptTeleportation&) const noexcept = default;
-		};
-
-		struct ChunkBatchReceived final {
-			float ChunksPerTick{ 0.0F };
-
-			bool operator==(const ChunkBatchReceived&) const noexcept = default;
-		};
-
-		struct ClientTickEnd final {
-			auto operator<=>(const ClientTickEnd&) const noexcept = default;
-		};
-
-		struct KeepAlive final {
-			std::int64_t Id{ 0 };
-
-			auto operator<=>(const KeepAlive&) const noexcept = default;
-		};
-
-		struct MovePlayerPosition final {
-			double X{ 0.0 };
-			double Y{ 0.0 };
-			double Z{ 0.0 };
-			MovementFlags Flags;
-
-			bool operator==(const MovePlayerPosition&) const noexcept = default;
-		};
-
-		struct MovePlayerPositionRotation final {
-			double X{ 0.0 };
-			double Y{ 0.0 };
-			double Z{ 0.0 };
-			float Yaw{ 0.0F };
-			float Pitch{ 0.0F };
-			MovementFlags Flags;
-
-			bool operator==(const MovePlayerPositionRotation&) const noexcept = default;
-		};
-
-		struct MovePlayerRotation final {
-			float Yaw{ 0.0F };
-			float Pitch{ 0.0F };
-			MovementFlags Flags;
-
-			bool operator==(const MovePlayerRotation&) const noexcept = default;
-		};
-
-		struct MovePlayerStatusOnly final {
-			MovementFlags Flags;
-
-			auto operator<=>(const MovePlayerStatusOnly&) const noexcept = default;
-		};
-
-		struct PlayerInput final {
-			PlayerInputFlags Flags;
-
-			auto operator<=>(const PlayerInput&) const noexcept = default;
-		};
-
-		struct PlayerLoaded final {
-			auto operator<=>(const PlayerLoaded&) const noexcept = default;
-		};
+		struct PlayerLoaded final { auto operator<=>(const PlayerLoaded&) const noexcept = default; };
 
 		struct PlayerCommand final {
 			std::int32_t EntityId{ 0 };
 			std::int32_t ActionId{ 0 };
 			std::int32_t JumpBoost{ 0 };
 		};
-		
-		struct PlayerAbilities final {
-			bool Flying{ false };
-		};
-
-		struct SetCarriedItem final {
-			std::int16_t Slot{ 0 };
-		};
-
-		struct ContainerClose final {
-			std::int32_t ContainerId{ 0 };
-		};
-
-		struct Swing final {
-			std::int32_t Hand{ 0 };
-		};
+		struct PlayerAbilities final { bool Flying{ false }; };
+		struct SetCarriedItem final { std::int16_t Slot{ 0 }; };
+		struct ContainerClose final { std::int32_t ContainerId{ 0 }; };
+		struct Swing final { std::int32_t Hand{ 0 }; };
 
 		// No item or world state is changed by these deliberately deferred actions.
 		// Optional sequence numbers are acknowledged to complete client prediction.
@@ -315,7 +225,7 @@ namespace Aurore::Protocol::Packets::Play {
 		using Packet = std::variant<
 			AcceptTeleportation, ChunkBatchReceived, ClientTickEnd, KeepAlive,
 			MovePlayerPosition, MovePlayerPositionRotation, MovePlayerRotation,
-			MovePlayerStatusOnly, PlayerInput, PlayerLoaded, PlayerCommand,
+			MovePlayerStatusOnly, PlayerInput, PlayerLoaded, ClientInformation, PlayerCommand,
 			PlayerAbilities, SetCarriedItem, ContainerClose, Swing, DeferredInteraction>;
 
 		[[nodiscard]] ProtocolResult<Packet> Decode(const PacketFrame& frame);

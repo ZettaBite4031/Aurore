@@ -6,11 +6,11 @@ add_library(
     src/ConfigurationSequence.cpp
     src/PacketCodec.cpp
     src/PacketFrame.cpp
+    src/PlayChunk.cpp
     src/ProtocolConnection.cpp
     src/ProtocolDiagnostics.cpp
     src/ProtocolPipeline.cpp
     src/ProtocolSession.cpp
-    src/ProtocolSession.PlayInput.cpp
     src/RegistryCompatibility.cpp
 
     src/Packets/Configuration.cpp
@@ -36,7 +36,6 @@ add_library(
     include/Aurore/Protocol/Packets/Login.hpp
     include/Aurore/Protocol/Packets/Status.hpp
     include/Aurore/Protocol/Packets/Play.hpp
-    src/PlayChunk.cpp
 )
 
 add_library(Aurore::Protocol ALIAS aurore_protocol)

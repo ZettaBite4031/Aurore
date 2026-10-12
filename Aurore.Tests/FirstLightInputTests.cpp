@@ -133,6 +133,107 @@ namespace Aurore::Tests {
 			"PlayBootstrapFailed");
 	}
 
+
+	TEST(FirstLightInputTests, PlayClientInformationUpdatesSessionPreferences) {
+		auto session = EnterPlay();
+
+		ByteBuffer initial;
+		initial.WriteString("en_us");
+		initial.WriteUnsignedByte(8); // View distance (signed byte)
+		initial.WriteVarInt(0); // Chat enabled
+		initial.WriteBool(true); // Chat colors
+		initial.WriteUnsignedByte(0x7F); // Visible skin parts
+		initial.WriteVarInt(1); // Right hand
+		initial.WriteBool(false); // Text filtering
+		initial.WriteBool(true); // Server listing
+		initial.WriteVarInt(0); // All particles
+
+		const auto decoded = Play::Serverbound::Decode(
+			MakeFrame(Play::Serverbound::ClientInformationPacketId, initial));
+		ASSERT_TRUE(decoded);
+		ASSERT_TRUE(std::holds_alternative<Play::Serverbound::ClientInformation>(*decoded));
+		EXPECT_EQ(std::get<Play::Serverbound::ClientInformation>(*decoded).Locale, "en_us");
+
+		const auto first = session.HandlePacket(
+			MakeFrame(Play::Serverbound::ClientInformationPacketId, initial));
+		ASSERT_TRUE(first);
+		EXPECT_TRUE(first->Requests.empty());
+		EXPECT_TRUE(first->OutboundPackets.empty());
+		ASSERT_TRUE(session.GetClientInformation());
+		EXPECT_EQ(session.GetClientInformation()->Locale, "en_us");
+		EXPECT_EQ(session.GetClientInformation()->ViewDistance, 8);
+
+		ByteBuffer updated;
+		updated.WriteString("fr_fr");
+		updated.WriteUnsignedByte(12);
+		updated.WriteVarInt(1); // Commands-only chat
+		updated.WriteBool(false);
+		updated.WriteUnsignedByte(0x3F);
+		updated.WriteVarInt(0); // Left hand
+		updated.WriteBool(true);
+		updated.WriteBool(false);
+		updated.WriteVarInt(2); // Minimal particles
+
+		const auto second = session.HandlePacket(
+			MakeFrame(Play::Serverbound::ClientInformationPacketId, updated));
+		ASSERT_TRUE(second);
+		EXPECT_FALSE(second->Disconnect);
+		EXPECT_EQ(session.GetState(), ProtocolState::Play);
+		ASSERT_TRUE(session.GetClientInformation());
+		EXPECT_EQ(session.GetClientInformation()->Locale, "fr_fr");
+		EXPECT_EQ(session.GetClientInformation()->ViewDistance, 12);
+		EXPECT_EQ(session.GetClientInformation()->ChatModeValue, Configuration::ChatMode::CommandsOnly);
+		EXPECT_EQ(session.GetClientInformation()->MainHandValue, Configuration::MainHand::Left);
+		EXPECT_EQ(session.GetClientInformation()->ParticleStatusValue, Configuration::ParticleStatus::Minimal);
+	}
+
+	TEST(FirstLightInputTests, MalformedPlayClientInformationDoesNotReplacePreferences) {
+		auto session = EnterPlay();
+		ByteBuffer valid;
+		valid.WriteString("en_us");
+		valid.WriteUnsignedByte(8);
+		valid.WriteVarInt(0);
+		valid.WriteBool(true);
+		valid.WriteUnsignedByte(0x7F);
+		valid.WriteVarInt(1);
+		valid.WriteBool(false);
+		valid.WriteBool(true);
+		valid.WriteVarInt(0);
+		ASSERT_TRUE(session.HandlePacket(MakeFrame(Play::Serverbound::ClientInformationPacketId, valid)));
+
+		ByteBuffer malformed;
+		malformed.WriteString("fr_fr");
+		malformed.WriteUnsignedByte(8);
+		malformed.WriteVarInt(99); // Invalid chat mode
+		malformed.WriteBool(true);
+		malformed.WriteUnsignedByte(0x7F);
+		malformed.WriteVarInt(1);
+		malformed.WriteBool(false);
+		malformed.WriteBool(true);
+		malformed.WriteVarInt(0);
+
+		const auto invalid = session.HandlePacket(
+			MakeFrame(Play::Serverbound::ClientInformationPacketId, malformed));
+		ASSERT_FALSE(invalid);
+		EXPECT_EQ(invalid.error(), Aurore::Protocol::ProtocolError::MalformedPacket);
+		ASSERT_TRUE(session.GetClientInformation());
+		EXPECT_EQ(session.GetClientInformation()->Locale, "en_us");
+
+		ByteBuffer trailing = valid;
+		trailing.WriteUnsignedByte(0x00);
+		const auto extra = Play::Serverbound::Decode(
+			MakeFrame(Play::Serverbound::ClientInformationPacketId, trailing));
+		ASSERT_FALSE(extra);
+		EXPECT_EQ(extra.error(), Aurore::Protocol::ProtocolError::TrailingPacketData);
+
+		ByteBuffer truncated;
+		truncated.WriteString("en_us");
+		const auto incomplete = Play::Serverbound::Decode(
+			MakeFrame(Play::Serverbound::ClientInformationPacketId, truncated));
+		ASSERT_FALSE(incomplete);
+		EXPECT_EQ(incomplete.error(), Aurore::Protocol::ProtocolError::MalformedPacket);
+	}
+
 	TEST(FirstLightInputTests, DecodesSprintCommandAndRejectsTrailingBytes) {
 		ByteBuffer payload;
 		payload.WriteVarInt(1);
@@ -220,3 +321,4 @@ namespace Aurore::Tests {
 		EXPECT_TRUE(inventory->Requests.empty());
 	}
 }
+
