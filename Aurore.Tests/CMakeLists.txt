@@ -13,8 +13,10 @@ set(
     DataPreparationServiceTests.cpp
     DataPreparationTests.cpp
     FirstLightInputTests.cpp
+    FirstLightLifecycleStressTests.cpp
     JavaRuntimeTests.cpp
     KeepAliveTrackerTests.cpp
+    LifecycleFailureDecisionTests.cpp
     LoginRequestTests.cpp
     MinecraftDataCorpusTests.cpp
     MinecraftDataGeneratorTests.cpp
