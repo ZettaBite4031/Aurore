@@ -255,7 +255,7 @@ namespace Aurore::Core {
 			if (result.FailureContext) {
 				const auto& context = *result.FailureContext;
 				AU_WARN(LogCategory::Protocol, "Protocol processing failed for connection {}. Stage: {}, state: {}, packet: {}, packet payload bytes: {}, input bytes: {}, buffered inbound bytes: {}, error: {}",
-					connection.Value, Protocol::GetProtocolStageName(context.Stage), Protocol::GetProtocolStateName(context.State), Protocol::FormatPacketId(context.PacketId),
+					connection.Value, Protocol::GetProtocolStageName(context.Stage), Protocol::GetProtocolStateName(context.State), Protocol::FormatPacketName(context.State, Protocol::PacketDirection::Serverbound, context.PacketId),
 					context.PacketPayloadBytes, context.InputBytes, context.BufferedInboundBytes, error_name);
 			}
 			else {
