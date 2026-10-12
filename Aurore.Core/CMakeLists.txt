@@ -16,6 +16,7 @@ add_library(
     include/Aurore/Core/ClientLogin.hpp
     include/Aurore/Core/ClientService.hpp
     include/Aurore/Core/Configuration.hpp
+    include/Aurore/Core/KeepAliveTracker.hpp
     include/Aurore/Core/RegistrySnapshotStore.hpp
     include/Aurore/Core/Server.hpp
     include/Aurore/Core/SyntheticRegistrySnapshot.hpp

@@ -47,6 +47,7 @@ namespace Aurore::Protocol::Packets::Play {
 
 	namespace Clientbound {
 		inline constexpr std::int32_t BlockChangedAckPacketId{ 0x04 };
+		inline constexpr std::int32_t KeepAlivePacketId{ 0x2B };
 		inline constexpr std::int32_t ChunkBatchFinishedPacketId{ 0x0B };
 		inline constexpr std::int32_t ChunkBatchStartPacketId{ 0x0C };
 		inline constexpr std::int32_t GameEventPacketId{ 0x26 };
@@ -57,6 +58,7 @@ namespace Aurore::Protocol::Packets::Play {
 
 		inline constexpr std::array PacketDescriptors{
 			PacketDescriptor{ BlockChangedAckPacketId, "block_changed_ack", Direction::Clientbound },
+			PacketDescriptor{ KeepAlivePacketId, "keep_alive", Direction::Clientbound },
 			PacketDescriptor{ ChunkBatchFinishedPacketId, "chunk_batch_finished", Direction::Clientbound },
 			PacketDescriptor{ ChunkBatchStartPacketId, "chunk_batch_start", Direction::Clientbound },
 			PacketDescriptor{ GameEventPacketId, "game_event", Direction::Clientbound },
@@ -72,6 +74,12 @@ namespace Aurore::Protocol::Packets::Play {
 			std::int32_t Sequence{ 0 };
 			bool operator==(const BlockChangedAck&) const noexcept = default;
 		};
+
+		struct KeepAlive final {
+			std::int64_t Id{ 0 };
+			bool operator==(const KeepAlive&) const noexcept = default;
+		};
+
 		struct ChunkBatchStart final {
 			bool operator==(const ChunkBatchStart&) const noexcept = default;
 		};
@@ -135,6 +143,7 @@ namespace Aurore::Protocol::Packets::Play {
 		};
 
 		[[nodiscard]] PacketFrame Encode(const BlockChangedAck& packet);
+		[[nodiscard]] PacketFrame Encode(const KeepAlive& packet);
 		[[nodiscard]] PacketFrame Encode(const ChunkBatchStart& packet);
 		[[nodiscard]] PacketFrame Encode(const ChunkBatchFinished& packet);
 		[[nodiscard]] PacketFrame Encode(const GameEvent& packet);

@@ -123,6 +123,17 @@ namespace Aurore::Protocol {
 		return result;
 	}
 
+	std::expected<Aurore::Util::ByteBuffer, ProtocolConnectionError> ProtocolConnection::EncodePlayFrame(const PacketFrame& frame) {
+		if (m_Disposition != ConnectionDisposition::KeepOpen || m_Session.GetState() != ProtocolState::Play)
+			return std::unexpected(ProtocolConnectionError{ ProtocolError::UnexpectedPacket });
+
+		auto encoded = m_Pipeline.EncodeOutbound(frame);
+		if (!encoded)
+			return std::unexpected(std::visit([](const auto error) -> ProtocolConnectionError { return error; }, encoded.error()));
+
+		return std::move(*encoded);
+	}
+
 	const ProtocolSession& ProtocolConnection::GetSession() const noexcept {
 		return m_Session;
 	}

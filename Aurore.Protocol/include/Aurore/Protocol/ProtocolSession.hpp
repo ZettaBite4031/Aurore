@@ -40,12 +40,13 @@ namespace Aurore::Protocol {
 	};
 	struct TeleportAcknowledgedRequest final { std::int32_t TeleportId{ 0 }; };
 	struct ChunkBatchFeedbackRequest final { float ChunksPerTick{ 0.0F }; };
+	struct KeepAliveResponseRequest final { std::int64_t Id{ 0 }; };
 	struct PlayerInputRequest final { Packets::Play::PlayerInputFlags Flags; };
 	struct PlayerLoadedRequest final {};
 
 	using ProtocolRequest = std::variant<
 		LoginStartRequest, ConfigurationStartRequest, ConfigurationCompleteRequest,
-		TeleportAcknowledgedRequest, ChunkBatchFeedbackRequest, PlayerMovementRequest,
+		TeleportAcknowledgedRequest, ChunkBatchFeedbackRequest, KeepAliveResponseRequest, PlayerMovementRequest,
 		PlayerInputRequest, PlayerLoadedRequest>;
 
 	struct ConfigurationReadyResolution final { ProtocolRequestId Id; ConfigurationTransmissionPlan Plan; };

@@ -266,8 +266,9 @@ namespace Aurore::Protocol {
 	}
 
 	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::KeepAlive& packet) {
-		(void)packet;
-		return ProtocolAction{};
+		ProtocolAction action{};
+		action.Requests.emplace_back(KeepAliveResponseRequest{ .Id = packet.Id });
+		return action;
 	}
 
 	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Play::Serverbound::MovePlayerPosition& packet) {

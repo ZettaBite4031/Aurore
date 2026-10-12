@@ -98,6 +98,10 @@ namespace Aurore::Protocol {
 		[[nodiscard]] bool IsOpen() const noexcept;
 		[[nodiscard]] bool IsClosing() const noexcept;
 
+		// Encode a server-initiated Play packet through the active transport pipeline.
+		// Does not enqueue or send: Core retains ownership of network output.
+		[[nodiscard]] std::expected<Aurore::Util::ByteBuffer, ProtocolConnectionError> EncodePlayFrame(const PacketFrame& frame);
+
 	private:
 		using AppendActionResult = std::expected<void, ProtocolConnectionError>;
 

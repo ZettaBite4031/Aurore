@@ -57,6 +57,13 @@ namespace Aurore::Protocol::Packets::Play {
 			payload.WriteVarInt(packet.Sequence);
 			return Frame(BlockChangedAckPacketId, payload);
 		}
+
+		PacketFrame Encode(const KeepAlive& packet) {
+			Aurore::Util::ByteBuffer payload;
+			payload.WriteInt64(packet.Id);
+			return Frame(KeepAlivePacketId, payload);
+		}
+
 		PacketFrame Encode(const ChunkBatchStart&) {
 			return PacketFrame{ .PacketId = ChunkBatchStartPacketId };
 		}

@@ -4,8 +4,10 @@
 
 #include <Aurore/Protocol/ProtocolDiagnostics.hpp>
 #include <Aurore/Protocol/PlayChunk.hpp>
+#include <Aurore/Protocol/Packets/Play.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -99,6 +101,16 @@ namespace Aurore::Core {
 
 	bool ClientService::Initialize(ClientConfiguration client_configuration, Protocol::ConfigurationSequencePolicy configuration_policy, Protocol::Packets::Configuration::Limits configuration_limits, Protocol::ServerStatus server_status) {
 		if (!m_ConnectionManager.SetConfiguration(std::move(client_configuration))) return false;
+
+		// Derive heartbeat timings from the existing configurable idle timeout.
+		// Both values are bounded and stay below the idle deadline.
+		const auto idle = m_ConnectionManager.GetConfiguration().IdleTimeout;
+		m_KeepAliveDurations = KeepAliveTracker::Durations{
+			.Interval = std::max(std::chrono::milliseconds{ 1 }, std::min(std::chrono::milliseconds{ 15'000 }, idle / 3)),
+			.Deadline = std::max(std::chrono::milliseconds{ 1 }, std::min(std::chrono::milliseconds{ 20'000 }, idle / 2)),
+		};
+		m_KeepAliveTrackers.clear();
+		m_NextKeepAliveId = 1;
 
 		m_ConfigurationPolicy = std::move(configuration_policy);
 		m_ConfigurationLimits = configuration_limits;
@@ -338,6 +350,45 @@ namespace Aurore::Core {
 					timeout.Connection.Value, static_cast<unsigned int>(close_result.error()));
 			}
 		}
+
+		// Keepalives run on the existing server tick, with no extra thread.
+		for (const auto& [connection, entity_id] : m_PlayerConnections) {
+			(void)entity_id;
+			auto* client = m_ConnectionManager.Find(connection);
+			if (!client || client->IsCloseRequested() || client->GetProtocolState() != Protocol::ProtocolState::Play)
+				continue;
+
+			auto [iterator, inserted] = m_KeepAliveTrackers.try_emplace(connection, now, m_KeepAliveDurations);
+			(void)inserted;
+			auto& tracker = iterator->second;
+			if (tracker.IsExpired(now)) {
+				AU_WARN(LogCategory::Protocol, "Keepalive timed out for connection {} (pending ID: {})", connection.Value, *tracker.PendingId());
+				RequestClientClose(*client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::IdleTimeout);
+				continue;
+			}
+			if (!tracker.ShouldSend(now)) continue;
+
+			if (m_NextKeepAliveId == std::numeric_limits<std::int64_t>::max())
+				m_NextKeepAliveId = 1;
+			const auto id = m_NextKeepAliveId++;
+			const auto frame = Protocol::Packets::Play::Clientbound::Encode(
+				Protocol::Packets::Play::Clientbound::KeepAlive{ .Id = id });
+			auto bytes = client->GetProtocolConnection().EncodePlayFrame(frame);
+			if (!bytes) {
+				AU_WARN(LogCategory::Protocol, "Failed to encode Play keepalive for connection {}: {}", connection.Value,
+					Protocol::GetProtocolConnectionErrorName(bytes.error()));
+				RequestClientClose(*client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+				continue;
+			}
+			auto queued = m_NetworkManager.QueueSend(connection, std::move(*bytes));
+			if (!queued) {
+				AU_WARN(LogCategory::Core, "Failed to queue keepalive for connection {}. Error: {}", connection.Value,
+					static_cast<unsigned int>(queued.error()));
+				RequestClientClose(*client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::TransportFailure);
+				continue;
+			}
+			tracker.MarkSent(id, now);
+		}
 	}
 
 	bool ClientService::HandleProtocolRequest(ClientConnection& client, const Protocol::ProtocolRequest& request) {
@@ -354,6 +405,8 @@ namespace Aurore::Core {
 				return HandleTeleportAcknowledgedRequest(client, value);
 			else if constexpr (std::is_same_v<Request, Protocol::ChunkBatchFeedbackRequest>)
 				return HandleChunkBatchFeedbackRequest(client, value);
+			else if constexpr (std::is_same_v<Request, Protocol::KeepAliveResponseRequest>)
+				return HandleKeepAliveResponseRequest(client, value);
 			else if constexpr (std::is_same_v<Request, Protocol::PlayerMovementRequest>)
 				return HandlePlayerMovementRequest(client, value);
 			else if constexpr (std::is_same_v<Request, Protocol::PlayerInputRequest>)
@@ -602,6 +655,20 @@ namespace Aurore::Core {
 		return true;
 	}
 
+	bool ClientService::HandleKeepAliveResponseRequest(ClientConnection& client, const Protocol::KeepAliveResponseRequest& request) {
+		const auto connection = client.GetConnectionId();
+		const auto iterator = m_KeepAliveTrackers.find(connection);
+		if (iterator != m_KeepAliveTrackers.end() && iterator->second.Acknowledge(request.Id, ClientConnection::Clock::now())) {
+			AU_TRACE(LogCategory::Protocol, "Connection {} acknowledged keepalive {} in {}ms", connection.Value, request.Id,
+				iterator->second.LastRtt()->count());
+			return true;
+		}
+
+		AU_WARN(LogCategory::Protocol, "Connection {} supplied an unexpected keepalive response ID {}", connection.Value, request.Id);
+		RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+		return false;
+	}
+
 	bool ClientService::HandlePlayerMovementRequest(ClientConnection& client, const Protocol::PlayerMovementRequest& request) {
 		auto* player = FindPlayer(client.GetConnectionId());
 		if (player == nullptr || client.GetProtocolState() != Protocol::ProtocolState::Play) {
@@ -659,6 +726,7 @@ namespace Aurore::Core {
 	}
 
 	void ClientService::RemoveWorldPlayer(Network::ConnectionId connection) noexcept {
+		m_KeepAliveTrackers.erase(connection);
 		const auto iterator = m_PlayerConnections.find(connection);
 		if (iterator == m_PlayerConnections.end()) return;
 
@@ -676,6 +744,7 @@ namespace Aurore::Core {
 			(void)m_WorldManager.RemovePlayer(entity_id);
 		}
 		m_PlayerConnections.clear();
+		m_KeepAliveTrackers.clear();
 		m_ConnectionManager.Clear();
 		m_FatalNetworkFailure = false;
 	}

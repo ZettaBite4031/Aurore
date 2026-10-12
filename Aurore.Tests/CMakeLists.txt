@@ -14,6 +14,7 @@ set(
     DataPreparationTests.cpp
     FirstLightInputTests.cpp
     JavaRuntimeTests.cpp
+    KeepAliveTrackerTests.cpp
     LoginRequestTests.cpp
     MinecraftDataCorpusTests.cpp
     MinecraftDataGeneratorTests.cpp

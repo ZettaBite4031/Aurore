@@ -320,5 +320,17 @@ namespace Aurore::Tests {
 		EXPECT_TRUE(inventory->OutboundPackets.empty());
 		EXPECT_TRUE(inventory->Requests.empty());
 	}
-}
 
+	TEST(FirstLightInputTests, KeepAliveReplyIsForwardedToCoreForValidation) {
+		auto session = EnterPlay();
+		ByteBuffer payload;
+		payload.WriteInt64(137);
+		const auto result = session.HandlePacket(MakeFrame(Play::Serverbound::KeepAlivePacketId, payload));
+		ASSERT_TRUE(result);
+		EXPECT_EQ(session.GetState(), ProtocolState::Play);
+		EXPECT_FALSE(result->Disconnect);
+		EXPECT_TRUE(result->OutboundPackets.empty());
+		const auto request = RequiredRequest<Aurore::Protocol::KeepAliveResponseRequest>(*result);
+		EXPECT_EQ(request.Id, 137);
+	}
+}

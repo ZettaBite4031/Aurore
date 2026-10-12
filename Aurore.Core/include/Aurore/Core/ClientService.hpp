@@ -2,6 +2,7 @@
 
 #include <Aurore/Core/ClientLifecycle.hpp>
 #include <Aurore/Core/ClientLogin.hpp>
+#include <Aurore/Core/KeepAliveTracker.hpp>
 #include <Aurore/Core/RegistrySnapshotStore.hpp>
 
 #include <Aurore/Network/NetworkManager.hpp>
@@ -13,7 +14,9 @@
 #include <Aurore/World/Player.hpp>
 #include <Aurore/World/WorldManager.hpp>
 
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 
@@ -64,6 +67,7 @@ namespace Aurore::Core {
 		[[nodiscard]] bool HandleConfigurationCompleteRequest(ClientConnection& client, const Protocol::ConfigurationCompleteRequest& request);
 		[[nodiscard]] bool HandleTeleportAcknowledgedRequest(ClientConnection& client, const Protocol::TeleportAcknowledgedRequest& request);
 		[[nodiscard]] bool HandleChunkBatchFeedbackRequest(ClientConnection& client, const Protocol::ChunkBatchFeedbackRequest& request);
+		[[nodiscard]] bool HandleKeepAliveResponseRequest(ClientConnection& client, const Protocol::KeepAliveResponseRequest& request);
 		[[nodiscard]] bool HandlePlayerMovementRequest(ClientConnection& client, const Protocol::PlayerMovementRequest& request);
 		[[nodiscard]] bool HandlePlayerInputRequest(ClientConnection& client, const Protocol::PlayerInputRequest& request);
 		[[nodiscard]] bool HandlePlayerLoadedRequest(ClientConnection& client, const Protocol::PlayerLoadedRequest& request);
@@ -77,6 +81,9 @@ namespace Aurore::Core {
 		ConnectionManager m_ConnectionManager;
 		ClientLogin m_ClientLogin;
 		std::unordered_map<Network::ConnectionId, World::PlayerEntityId> m_PlayerConnections;
+		std::unordered_map<Network::ConnectionId, KeepAliveTracker> m_KeepAliveTrackers;
+		KeepAliveTracker::Durations m_KeepAliveDurations{};
+		std::int64_t m_NextKeepAliveId{ 1 };
 
 		Protocol::ConfigurationSequencePolicy m_ConfigurationPolicy;
 		Protocol::Packets::Configuration::Limits m_ConfigurationLimits{ Protocol::Packets::Configuration::DefaultLimits };
