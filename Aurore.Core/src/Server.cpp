@@ -128,7 +128,6 @@ namespace Aurore::Core {
 		}
 
 		Shutdown();
-		std::cin.get();
 		return exit_code;
 	}
 
