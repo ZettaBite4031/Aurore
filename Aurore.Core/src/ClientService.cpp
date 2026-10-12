@@ -110,6 +110,7 @@ namespace Aurore::Core {
 			.Deadline = std::max(std::chrono::milliseconds{ 1 }, std::min(std::chrono::milliseconds{ 20'000 }, idle / 2)),
 		};
 		m_KeepAliveTrackers.clear();
+		m_PlayerSynchronizationStates.clear();
 		m_NextKeepAliveId = 1;
 
 		m_ConfigurationPolicy = std::move(configuration_policy);
@@ -358,6 +359,16 @@ namespace Aurore::Core {
 			if (!client || client->IsCloseRequested() || client->GetProtocolState() != Protocol::ProtocolState::Play)
 				continue;
 
+			const auto synchronization = m_PlayerSynchronizationStates.find(connection);
+			if (synchronization != m_PlayerSynchronizationStates.end()) {
+				if (const auto expired = synchronization->second.Expired(now)) {
+					AU_WARN(LogCategory::Protocol, "Synchronization timed out for connection {} while awaiting {}",
+						connection.Value, *expired == PlayerSynchronizationTracker::Expiration::Teleport ? "teleport acknowledgement" : "chunk batch feedback");
+					RequestClientClose(*client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+					continue;
+				}
+			}
+
 			auto [iterator, inserted] = m_KeepAliveTrackers.try_emplace(connection, now, m_KeepAliveDurations);
 			(void)inserted;
 			auto& tracker = iterator->second;
@@ -590,6 +601,10 @@ namespace Aurore::Core {
 		AU_DEBUG(LogCategory::Protocol, "Prepared First Light {}-chunk neighborhood for connection {} with {} platform blocks",
 			initial_chunks->size(), connection.Value, initial_chunks->back().Blocks.size());
 
+		// Both operations become outstanding only after the complete Play
+		// admission batch has been successfully queued for transmission.
+		const bool sends_initial_chunk_batch = !initial_chunks->empty();
+
 		auto result = client.ResolveConfiguration(Protocol::ConfigurationResolution{
 			Protocol::ConfigurationAcceptedResolution{
 				.Id = request.Id,
@@ -631,6 +646,17 @@ namespace Aurore::Core {
 			return false;
 		}
 
+		// First Light's Play bootstrap currently emits teleport ID 1. When
+		// runtime teleports arrive, their issued IDs should be registered at
+		// the corresponding successful queue boundary instead of here.
+		constexpr std::int32_t FirstLightInitialTeleportId{ 1 };
+		const auto queued_at = ClientConnection::Clock::now();
+		auto& synchronization = m_PlayerSynchronizationStates[connection];
+		synchronization.ExpectTeleport(FirstLightInitialTeleportId, queued_at);
+		if (sends_initial_chunk_batch) synchronization.ExpectChunkBatch(queued_at);
+		AU_DEBUG(LogCategory::Protocol, "Connection {} queued initial teleport {} and {} initial chunk batch",
+			connection.Value, FirstLightInitialTeleportId, sends_initial_chunk_batch ? "one" : "no");
+
 		AU_DEBUG(LogCategory::Protocol, "Configuration completed for connection {} using registry generation {}; client entered Play",
 			connection.Value, request.Generation);
 
@@ -644,15 +670,59 @@ namespace Aurore::Core {
 	}
 
 	bool ClientService::HandleTeleportAcknowledgedRequest(ClientConnection& client, const Protocol::TeleportAcknowledgedRequest& request) {
-		AU_DEBUG(LogCategory::Protocol, "Connection {} acknowledged player teleport {}", client.GetConnectionId().Value, request.TeleportId);
-		return true;
+		const auto connection = client.GetConnectionId();
+		const auto iterator = m_PlayerSynchronizationStates.find(connection);
+		if (iterator == m_PlayerSynchronizationStates.end()) {
+			AU_WARN(LogCategory::Protocol, "Connection {} acknowledged teleport {} without synchronization state", connection.Value, request.TeleportId);
+			return true;
+		}
+
+		const auto status = iterator->second.AcknowledgeTeleport(request.TeleportId, ClientConnection::Clock::now());
+		switch (status) {
+		case PlayerSynchronizationTracker::Result::Accepted:
+			AU_DEBUG(LogCategory::Protocol, "Connection {} acknowledged pending teleport {}", connection.Value, request.TeleportId);
+			return true;
+		case PlayerSynchronizationTracker::Result::Duplicate:
+			AU_TRACE(LogCategory::Protocol, "Connection {} repeated teleport acknowledgement {}", connection.Value, request.TeleportId);
+			return true;
+		case PlayerSynchronizationTracker::Result::Expired:
+			AU_WARN(LogCategory::Protocol, "Connection {} acknowledged expired teleport {}", connection.Value, request.TeleportId);
+			RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+			return false;
+		default:
+			AU_WARN(LogCategory::Protocol, "Connection {} supplied unexpected teleport acknowledgement {}", connection.Value, request.TeleportId);
+			return true;
+		}
 	}
 
 	bool ClientService::HandleChunkBatchFeedbackRequest(ClientConnection& client, const Protocol::ChunkBatchFeedbackRequest& request) {
-		AU_DEBUG(LogCategory::Protocol, "Connection {} acknowledged chunk batch; requested {:.3f} chunks/tick",
-			client.GetConnectionId().Value, request.ChunksPerTick);
+		const auto connection = client.GetConnectionId();
+		const auto iterator = m_PlayerSynchronizationStates.find(connection);
+		if (iterator == m_PlayerSynchronizationStates.end()) {
+			AU_WARN(LogCategory::Protocol, "Connection {} supplied chunk feedback without synchronization state", connection.Value);
+			return true;
+		}
 
-		return true;
+		const auto status = iterator->second.ReceiveChunkBatchFeedback(request.ChunksPerTick, ClientConnection::Clock::now());
+		switch (status) {
+		case PlayerSynchronizationTracker::Result::Accepted:
+			AU_DEBUG(LogCategory::Protocol, "Connection {} acknowledged initial chunk batch; requested {:.3f} chunks/tick",
+				connection.Value, request.ChunksPerTick);
+			return true;
+		case PlayerSynchronizationTracker::Result::Duplicate:
+			AU_TRACE(LogCategory::Protocol, "Connection {} supplied additional chunk batch feedback", connection.Value);
+			return true;
+		case PlayerSynchronizationTracker::Result::Expired:
+			AU_WARN(LogCategory::Protocol, "Connection {} supplied chunk batch feedback after the deadline", connection.Value);
+			RequestClientClose(client, ClientReceiveDisposition::CloseImmediately, ClientCloseCause::ProtocolFailure);
+			return false;
+		case PlayerSynchronizationTracker::Result::Invalid:
+			AU_WARN(LogCategory::Protocol, "Connection {} supplied invalid chunk batch rate", connection.Value);
+			return true;
+		default:
+			AU_WARN(LogCategory::Protocol, "Connection {} supplied unexpected chunk batch feedback", connection.Value);
+			return true;
+		}
 	}
 
 	bool ClientService::HandleKeepAliveResponseRequest(ClientConnection& client, const Protocol::KeepAliveResponseRequest& request) {
@@ -721,12 +791,18 @@ namespace Aurore::Core {
 		}
 
 		player->MarkLoaded();
+		const auto state = m_PlayerSynchronizationStates.find(client.GetConnectionId());
+		if (state != m_PlayerSynchronizationStates.end() && !state->second.MarkPlayerLoaded()) {
+			AU_TRACE(LogCategory::Protocol, "Connection {} repeated player-loaded notification", client.GetConnectionId().Value);
+			return true;
+		}
 		AU_DEBUG(LogCategory::Player, "Player '{}' reported client world load complete", player->GetUsername());
 		return true;
 	}
 
 	void ClientService::RemoveWorldPlayer(Network::ConnectionId connection) noexcept {
 		m_KeepAliveTrackers.erase(connection);
+		m_PlayerSynchronizationStates.erase(connection);
 		const auto iterator = m_PlayerConnections.find(connection);
 		if (iterator == m_PlayerConnections.end()) return;
 
@@ -745,6 +821,7 @@ namespace Aurore::Core {
 		}
 		m_PlayerConnections.clear();
 		m_KeepAliveTrackers.clear();
+		m_PlayerSynchronizationStates.clear();
 		m_ConnectionManager.Clear();
 		m_FatalNetworkFailure = false;
 	}

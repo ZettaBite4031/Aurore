@@ -6,7 +6,7 @@
 #include <optional>
 
 namespace Aurore::Core {
-	// Pure per-connectino state. Core owns clock scheduling and transport policy.
+	// Pure per-connection state. Core owns clock scheduling and transport policy.
 	class KeepAliveTracker final {
 	public:
 		using Clock = std::chrono::steady_clock;

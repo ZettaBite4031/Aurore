@@ -3,6 +3,7 @@
 #include <Aurore/Core/ClientLifecycle.hpp>
 #include <Aurore/Core/ClientLogin.hpp>
 #include <Aurore/Core/KeepAliveTracker.hpp>
+#include <Aurore/Core/PlayerSynchronizationTracker.hpp>
 #include <Aurore/Core/RegistrySnapshotStore.hpp>
 
 #include <Aurore/Network/NetworkManager.hpp>
@@ -82,6 +83,7 @@ namespace Aurore::Core {
 		ClientLogin m_ClientLogin;
 		std::unordered_map<Network::ConnectionId, World::PlayerEntityId> m_PlayerConnections;
 		std::unordered_map<Network::ConnectionId, KeepAliveTracker> m_KeepAliveTrackers;
+		std::unordered_map<Network::ConnectionId, PlayerSynchronizationTracker> m_PlayerSynchronizationStates;
 		KeepAliveTracker::Durations m_KeepAliveDurations{};
 		std::int64_t m_NextKeepAliveId{ 1 };
 

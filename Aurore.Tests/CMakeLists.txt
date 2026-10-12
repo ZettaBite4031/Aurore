@@ -31,6 +31,7 @@ set(
     PacketCodecTests.cpp
     PacketFrameTests.cpp
     PlayerRuntimeTests.cpp
+    PlayerSynchronizationTrackerTests.cpp
     PlayProtocolTests.cpp
     ProcessTests.cpp
     ProtocolConnectionTests.cpp
