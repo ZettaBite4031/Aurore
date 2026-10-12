@@ -1,5 +1,8 @@
 #include <Aurore/Protocol/ProtocolDiagnostics.hpp>
+#include <Aurore/Protocol/PacketCatalog774.hpp>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <type_traits>
@@ -67,6 +70,7 @@ namespace Aurore::Protocol {
 		case ProtocolError::MissingConfigurationPlan: return "MissingConfigurationPlan";
 		case ProtocolError::ConfigurationMaterializationFailed: return "ConfigurationMaterializationFailed";
 		case ProtocolError::ConfigurationGenerationMismatch: return "ConfigurationGenerationMismatch";
+		case ProtocolError::PlayBootstrapFailed: return "PlayBootstrapFailed";
 		}
 		return "UnknownProtocolError";
 	}
@@ -74,7 +78,6 @@ namespace Aurore::Protocol {
 	std::string_view GetProtocolConnectionErrorName(const ProtocolConnectionError& error) noexcept {
 		return std::visit([](const auto value) -> std::string_view {
 			using Error = std::remove_cvref_t<decltype(value)>;
-
 			if constexpr (std::is_same_v<Error, FrameError>)
 				return GetFrameErrorName(value);
 			else if constexpr (std::is_same_v<Error, ProtocolTransformError>)
@@ -86,8 +89,45 @@ namespace Aurore::Protocol {
 		}, error);
 	}
 
+	namespace {
+		template<std::size_t N>
+		std::optional<std::string_view> Lookup(const std::array<std::string_view, N>& names, std::int32_t packet_id) noexcept {
+			if (packet_id < 0 || static_cast<std::size_t>(packet_id) >= N) return std::nullopt;
+			return names[static_cast<std::size_t>(packet_id)];
+		}
+	}
+
+	std::optional<std::string_view> FindPacketName(ProtocolState state, PacketDirection direction, std::int32_t packet_id) noexcept {
+		using namespace Catalog774;
+		switch (state) {
+		case ProtocolState::Handshake: return direction == PacketDirection::Serverbound ? Lookup(HandshakeServerbound, packet_id) : std::nullopt;
+		case ProtocolState::Status: return direction == PacketDirection::Serverbound ? Lookup(StatusServerbound, packet_id) : Lookup(StatusClientbound, packet_id);
+		case ProtocolState::Login: return direction == PacketDirection::Serverbound ? Lookup(LoginServerbound, packet_id) : Lookup(LoginClientbound, packet_id);
+		case ProtocolState::Configuration: return direction == PacketDirection::Serverbound ? Lookup(ConfigurationServerbound, packet_id) : Lookup(ConfigurationClientbound, packet_id);
+		case ProtocolState::Play: return direction == PacketDirection::Serverbound ? Lookup(Serverbound, packet_id) : Lookup(Clientbound, packet_id);
+		case ProtocolState::Disconnected: return std::nullopt;
+		}
+		return std::nullopt;
+	}
+
+	std::string FormatPacketName(ProtocolState state, PacketDirection direction, std::optional<std::int32_t> packet_id) {
+		if (!packet_id) return "N/A";
+		const auto name = FindPacketName(state, direction, *packet_id);
+		if (!name) return FormatPacketId(packet_id);
+		return std::format("{} (0x{:02X}; {})", *name, static_cast<std::uint32_t>(*packet_id), *packet_id);
+	}
+
 	std::string FormatPacketId(std::optional<std::int32_t> packet_id) {
 		if (!packet_id) return "N/A";
-		return std::format("0x{:02X} ({})", static_cast<std::uint32_t>(*packet_id), *packet_id);
+		const auto numeric = std::format("0x{:02X} ({})", static_cast<std::uint32_t>(*packet_id), *packet_id);
+
+		// Existing Core log sites pass only the ID, not the protocol state. This
+		// is explicitly a candidate (not an assertion about the current state).
+		// It makes First Light Play failures readable without coupling Protocol
+		// to Core's logging infrastructure or rewriting Core for this milestone.
+		if (const auto name = FindPacketName(ProtocolState::Play, PacketDirection::Serverbound, *packet_id))
+			return std::format("{} [Play/Serverbound candidate: {}]", numeric, *name);
+
+		return numeric;
 	}
 }

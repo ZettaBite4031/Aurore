@@ -11,15 +11,16 @@
 #include <Aurore/Protocol/Packets/Login.hpp>
 #include <Aurore/Protocol/Packets/Configuration.hpp>
 #include <Aurore/Protocol/Packets/Play.hpp>
-
 #include <Aurore/Util/ByteBuffer.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
+
 
 namespace Aurore::Protocol {
 	using HandshakeIntention = Packets::Handshake::Intention;
@@ -59,14 +60,9 @@ namespace Aurore::Protocol {
 	struct PlayerLoadedRequest final {};
 
 	using ProtocolRequest = std::variant<
-		LoginStartRequest,
-		ConfigurationStartRequest,
-		ConfigurationCompleteRequest,
-		TeleportAcknowledgedRequest,
-		ChunkBatchFeedbackRequest,
-		PlayerMovementRequest,
-		PlayerInputRequest,
-		PlayerLoadedRequest>;
+		LoginStartRequest, ConfigurationStartRequest, ConfigurationCompleteRequest,
+		TeleportAcknowledgedRequest, ChunkBatchFeedbackRequest, PlayerMovementRequest,
+		PlayerInputRequest, PlayerLoadedRequest>;
 
 	struct ConfigurationReadyResolution final {
 		ProtocolRequestId Id;
@@ -192,6 +188,12 @@ namespace Aurore::Protocol {
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::MovePlayerStatusOnly& packet);
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::PlayerInput& packet);
 		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::PlayerLoaded& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::PlayerCommand& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::PlayerAbilities& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::SetCarriedItem& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::ContainerClose& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::Swing& packet);
+		[[nodiscard]] ProtocolHandleResult HandlePlayPacket(const Packets::Play::Serverbound::DeferredInteraction& packet);
 
 		[[nodiscard]] ProtocolHandleResult ResolveLogin(const LoginAcceptedResolution& resolution);
 		[[nodiscard]] ProtocolHandleResult ResolveLogin(const LoginRejectedResolution& resolution);

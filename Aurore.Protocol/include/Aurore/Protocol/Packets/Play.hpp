@@ -56,6 +56,7 @@ namespace Aurore::Protocol::Packets::Play {
 	};
 
 	namespace Clientbound {
+		inline constexpr std::int32_t BlockChangedAckPacketId{ 0x04 };
 		inline constexpr std::int32_t ChunkBatchFinishedPacketId{ 0x0B };
 		inline constexpr std::int32_t ChunkBatchStartPacketId{ 0x0C };
 		inline constexpr std::int32_t GameEventPacketId{ 0x26 };
@@ -65,6 +66,7 @@ namespace Aurore::Protocol::Packets::Play {
 		inline constexpr std::int32_t SetChunkCacheRadiusPacketId{ 0x5D };
 
 		inline constexpr std::array PacketDescriptors{
+			PacketDescriptor{ BlockChangedAckPacketId, "block_changed_ack", Direction::Clientbound },
 			PacketDescriptor{ ChunkBatchFinishedPacketId, "chunk_batch_finished", Direction::Clientbound },
 			PacketDescriptor{ ChunkBatchStartPacketId, "chunk_batch_start", Direction::Clientbound },
 			PacketDescriptor{ GameEventPacketId, "game_event", Direction::Clientbound },
@@ -76,6 +78,11 @@ namespace Aurore::Protocol::Packets::Play {
 
 		enum class GameEventType : std::uint8_t {
 			StartWaitingForLevelChunks = 13,
+		};
+
+		struct BlockChangedAck final {
+			std::int32_t Sequence{ 0 };
+			bool operator==(const BlockChangedAck&) const noexcept = default;
 		};
 
 		struct ChunkBatchStart final {
@@ -155,6 +162,7 @@ namespace Aurore::Protocol::Packets::Play {
 			bool operator==(const PlayerPosition&) const noexcept = default;
 		};
 
+		[[nodiscard]] PacketFrame Encode(const BlockChangedAck& packet);
 		[[nodiscard]] PacketFrame Encode(const ChunkBatchStart& packet);
 		[[nodiscard]] PacketFrame Encode(const ChunkBatchFinished& packet);
 		[[nodiscard]] PacketFrame Encode(const GameEvent& packet);
@@ -168,25 +176,45 @@ namespace Aurore::Protocol::Packets::Play {
 		inline constexpr std::int32_t AcceptTeleportationPacketId{ 0x00 };
 		inline constexpr std::int32_t ChunkBatchReceivedPacketId{ 0x0A };
 		inline constexpr std::int32_t ClientTickEndPacketId{ 0x0C };
+		inline constexpr std::int32_t ContainerClickPacketId{ 0x11 };
+		inline constexpr std::int32_t ContainerClosePacketId{ 0x12 };
 		inline constexpr std::int32_t KeepAlivePacketId{ 0x1B };
 		inline constexpr std::int32_t MovePlayerPositionPacketId{ 0x1D };
 		inline constexpr std::int32_t MovePlayerPositionRotationPacketId{ 0x1E };
 		inline constexpr std::int32_t MovePlayerRotationPacketId{ 0x1F };
 		inline constexpr std::int32_t MovePlayerStatusOnlyPacketId{ 0x20 };
+		inline constexpr std::int32_t PlayerAbilitiesPacketId{ 0x27 };
+		inline constexpr std::int32_t PlayerActionPacketId{ 0x28 };
+		inline constexpr std::int32_t PlayerCommandPacketId{ 0x29 };
 		inline constexpr std::int32_t PlayerInputPacketId{ 0x2A };
 		inline constexpr std::int32_t PlayerLoadedPacketId{ 0x2B };
+		inline constexpr std::int32_t SetCarriedItemPacketId{ 0x34 };
+		inline constexpr std::int32_t SetCreativeModeSlotPacketId{ 0x37 };
+		inline constexpr std::int32_t SwingPacketId{ 0x3C };
+		inline constexpr std::int32_t UseItemOnPacketId{ 0x3F };
+		inline constexpr std::int32_t UseItemPacketId{ 0x40 };
 
 		inline constexpr std::array PacketDescriptors{
 			PacketDescriptor{ AcceptTeleportationPacketId, "accept_teleportation", Direction::Serverbound },
 			PacketDescriptor{ ChunkBatchReceivedPacketId, "chunk_batch_received", Direction::Serverbound },
 			PacketDescriptor{ ClientTickEndPacketId, "client_tick_end", Direction::Serverbound },
+			PacketDescriptor{ ContainerClickPacketId, "container_click", Direction::Serverbound },
+			PacketDescriptor{ ContainerClosePacketId, "container_close", Direction::Serverbound },
 			PacketDescriptor{ KeepAlivePacketId, "keep_alive", Direction::Serverbound },
 			PacketDescriptor{ MovePlayerPositionPacketId, "move_player_pos", Direction::Serverbound },
 			PacketDescriptor{ MovePlayerPositionRotationPacketId, "move_player_pos_rot", Direction::Serverbound },
 			PacketDescriptor{ MovePlayerRotationPacketId, "move_player_rot", Direction::Serverbound },
 			PacketDescriptor{ MovePlayerStatusOnlyPacketId, "move_player_status_only", Direction::Serverbound },
+			PacketDescriptor{ PlayerAbilitiesPacketId, "player_abilities", Direction::Serverbound },
+			PacketDescriptor{ PlayerActionPacketId, "player_action", Direction::Serverbound },
+			PacketDescriptor{ PlayerCommandPacketId, "player_command", Direction::Serverbound },
 			PacketDescriptor{ PlayerInputPacketId, "player_input", Direction::Serverbound },
 			PacketDescriptor{ PlayerLoadedPacketId, "player_loaded", Direction::Serverbound },
+			PacketDescriptor{ SetCarriedItemPacketId, "set_carried_item", Direction::Serverbound },
+			PacketDescriptor{ SetCreativeModeSlotPacketId, "set_creative_mode_slot", Direction::Serverbound },
+			PacketDescriptor{ SwingPacketId, "swing", Direction::Serverbound },
+			PacketDescriptor{ UseItemOnPacketId, "use_item_on", Direction::Serverbound },
+			PacketDescriptor{ UseItemPacketId, "use_item", Direction::Serverbound },
 		};
 
 		struct AcceptTeleportation final {
@@ -255,17 +283,40 @@ namespace Aurore::Protocol::Packets::Play {
 			auto operator<=>(const PlayerLoaded&) const noexcept = default;
 		};
 
+		struct PlayerCommand final {
+			std::int32_t EntityId{ 0 };
+			std::int32_t ActionId{ 0 };
+			std::int32_t JumpBoost{ 0 };
+		};
+		
+		struct PlayerAbilities final {
+			bool Flying{ false };
+		};
+
+		struct SetCarriedItem final {
+			std::int16_t Slot{ 0 };
+		};
+
+		struct ContainerClose final {
+			std::int32_t ContainerId{ 0 };
+		};
+
+		struct Swing final {
+			std::int32_t Hand{ 0 };
+		};
+
+		// No item or world state is changed by these deliberately deferred actions.
+		// Optional sequence numbers are acknowledged to complete client prediction.
+		struct DeferredInteraction final {
+			std::int32_t PacketId{ 0 };
+			std::optional<std::int32_t> Sequence;
+		};
+
 		using Packet = std::variant<
-			AcceptTeleportation,
-			ChunkBatchReceived,
-			ClientTickEnd,
-			KeepAlive,
-			MovePlayerPosition,
-			MovePlayerPositionRotation,
-			MovePlayerRotation,
-			MovePlayerStatusOnly,
-			PlayerInput,
-			PlayerLoaded>;
+			AcceptTeleportation, ChunkBatchReceived, ClientTickEnd, KeepAlive,
+			MovePlayerPosition, MovePlayerPositionRotation, MovePlayerRotation,
+			MovePlayerStatusOnly, PlayerInput, PlayerLoaded, PlayerCommand,
+			PlayerAbilities, SetCarriedItem, ContainerClose, Swing, DeferredInteraction>;
 
 		[[nodiscard]] ProtocolResult<Packet> Decode(const PacketFrame& frame);
 	}

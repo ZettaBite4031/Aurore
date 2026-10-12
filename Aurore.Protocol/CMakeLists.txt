@@ -10,6 +10,7 @@ add_library(
     src/ProtocolDiagnostics.cpp
     src/ProtocolPipeline.cpp
     src/ProtocolSession.cpp
+    src/ProtocolSession.PlayInput.cpp
     src/RegistryCompatibility.cpp
 
     src/Packets/Configuration.cpp
@@ -21,6 +22,7 @@ add_library(
     include/Aurore/Protocol/ConfigurationRegistryAdapter.hpp
     include/Aurore/Protocol/ConfigurationSequence.hpp
     include/Aurore/Protocol/PacketCodec.hpp
+    include/Aurore/Protocol/PacketCatalog774.hpp
     include/Aurore/Protocol/PacketFrame.hpp
     include/Aurore/Protocol/ProtocolConnection.hpp
     include/Aurore/Protocol/ProtocolDiagnostics.hpp
@@ -34,7 +36,8 @@ add_library(
     include/Aurore/Protocol/Packets/Login.hpp
     include/Aurore/Protocol/Packets/Status.hpp
     include/Aurore/Protocol/Packets/Play.hpp
- "src/PlayChunk.cpp")
+    src/PlayChunk.cpp
+)
 
 add_library(Aurore::Protocol ALIAS aurore_protocol)
 
@@ -46,10 +49,8 @@ target_include_directories(
 
 target_link_libraries(
     aurore_protocol
-
     PUBLIC
     Aurore::Util
-
     PRIVATE
     Aurore::BuildOptions
 )

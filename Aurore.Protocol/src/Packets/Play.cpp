@@ -48,23 +48,31 @@ namespace Aurore::Protocol::Packets::Play {
 			payload.WriteVarInt(info.PortalCooldown);
 			payload.WriteVarInt(info.SeaLevel);
 		}
+
+		[[nodiscard]] PacketFrame Frame(std::int32_t packet_id, const Aurore::Util::ByteBuffer& bytes) {
+			return PacketFrame{
+				.PacketId = packet_id,
+				.Payload = std::vector<std::byte>(bytes.Bytes().begin(), bytes.Bytes().end()),
+			};
+		}
 	}
 
 	namespace Clientbound {
+		PacketFrame Encode(const BlockChangedAck& packet) {
+			Aurore::Util::ByteBuffer payload;
+			payload.WriteVarInt(packet.Sequence);
+
+			return Frame(BlockChangedAckPacketId, payload);
+		}
 		PacketFrame Encode(const ChunkBatchStart&) {
-			return PacketFrame{
-				.PacketId = ChunkBatchStartPacketId,
-			};
+			return PacketFrame{ .PacketId = ChunkBatchStartPacketId, };
 		}
 
 		PacketFrame Encode(const ChunkBatchFinished& packet) {
 			Aurore::Util::ByteBuffer payload;
 			payload.WriteVarInt(packet.BatchSize);
 
-			return PacketFrame{
-				.PacketId = ChunkBatchFinishedPacketId,
-				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
-			};
+			return Frame(ChunkBatchFinishedPacketId, payload);
 		}
 
 		PacketFrame Encode(const GameEvent& packet) {
@@ -72,10 +80,7 @@ namespace Aurore::Protocol::Packets::Play {
 			payload.WriteUnsignedByte(static_cast<std::uint8_t>(packet.Event));
 			payload.WriteFloat(packet.Value);
 
-			return PacketFrame{
-				.PacketId = GameEventPacketId,
-				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
-			};
+			return Frame(GameEventPacketId, payload);
 		}
 
 		PacketFrame Encode(const Login& packet) {
@@ -96,10 +101,7 @@ namespace Aurore::Protocol::Packets::Play {
 			EncodeCommonSpawnInfo(payload, packet.SpawnInfo);
 			payload.WriteBool(packet.EnforcesSecureChat);
 
-			return PacketFrame{
-				.PacketId = LoginPacketId,
-				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
-			};
+			return Frame(LoginPacketId, payload);
 		}
 
 		PacketFrame Encode(const SetChunkCacheCenter& packet) {
@@ -107,20 +109,14 @@ namespace Aurore::Protocol::Packets::Play {
 			payload.WriteVarInt(packet.ChunkX);
 			payload.WriteVarInt(packet.ChunkZ);
 
-			return PacketFrame{
-				.PacketId = SetChunkCacheCenterPacketId,
-				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
-			};
+			return Frame(SetChunkCacheCenterPacketId, payload);
 		}
 
 		PacketFrame Encode(const SetChunkCacheRadius& packet) {
 			Aurore::Util::ByteBuffer payload;
 			payload.WriteVarInt(packet.Radius);
 
-			return PacketFrame{
-				.PacketId = SetChunkCacheRadiusPacketId,
-				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
-			};
+			return Frame(SetChunkCacheRadiusPacketId, payload);
 		}
 
 		PacketFrame Encode(const PlayerPosition& packet) {
@@ -139,150 +135,162 @@ namespace Aurore::Protocol::Packets::Play {
 			/* Relative.SET_STREAM_CODEC is a fixed-width network INT. */
 			payload.WriteInt32(static_cast<std::int32_t>(packet.RelativeFlags));
 
-			return PacketFrame{
-				.PacketId = PlayerPositionPacketId,
-				.Payload = std::vector<std::byte>(payload.Bytes().begin(), payload.Bytes().end()),
-			};
+			return Frame(PlayerPositionPacketId, payload);
 		}
 	}
 
 	namespace Serverbound {
 		ProtocolResult<Packet> Decode(const PacketFrame& frame) {
+			Aurore::Util::ByteReader reader(frame.Payload);
 			switch (frame.PacketId) {
 			case AcceptTeleportationPacketId: {
-				Aurore::Util::ByteReader reader(frame.Payload);
 				const auto teleport_id = reader.ReadVarInt();
-
-				if (!teleport_id)
-					return std::unexpected(ProtocolError::MalformedPacket);
-				if (!reader.Empty())
-					return std::unexpected(ProtocolError::TrailingPacketData);
+				if (!teleport_id) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
 				return Packet{ AcceptTeleportation{ .TeleportId = *teleport_id } };
 			}
 			case ChunkBatchReceivedPacketId: {
-				Aurore::Util::ByteReader reader(frame.Payload);
 				const auto chunks_per_tick = reader.ReadFloat();
-
-				if (!chunks_per_tick)
-					return std::unexpected(ProtocolError::MalformedPacket);
-				if (!reader.Empty())
-					return std::unexpected(ProtocolError::TrailingPacketData);
-
-				return Packet{
-					ChunkBatchReceived{
-						.ChunksPerTick = *chunks_per_tick,
-					}
-				};
+				if (!chunks_per_tick) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ ChunkBatchReceived{ .ChunksPerTick = *chunks_per_tick, } };
 			}
 			case ClientTickEndPacketId:
 				return DecodeEmptyPacket(frame, Packet{ ClientTickEnd{} });
 			case KeepAlivePacketId: {
-				Aurore::Util::ByteReader reader(frame.Payload);
 				const auto id = reader.ReadInt64();
-
-				if (!id)
-					return std::unexpected(ProtocolError::MalformedPacket);
-				if (!reader.Empty())
-					return std::unexpected(ProtocolError::TrailingPacketData);
+				if (!id) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
 				return Packet{ KeepAlive{ .Id = *id } };
 			}
 			case MovePlayerPositionPacketId: {
-				Aurore::Util::ByteReader reader(frame.Payload);
 				const auto x = reader.ReadDouble();
 				const auto y = reader.ReadDouble();
 				const auto z = reader.ReadDouble();
 				const auto flags = reader.ReadUnsignedByte();
-
-				if (!x || !y || !z || !flags)
-					return std::unexpected(ProtocolError::MalformedPacket);
-				if (!reader.Empty())
-					return std::unexpected(ProtocolError::TrailingPacketData);
-
-				return Packet{
-					MovePlayerPosition{
-						.X = *x,
-						.Y = *y,
-						.Z = *z,
-						.Flags = DecodeMovementFlags(*flags),
-					}
-				};
+				if (!x || !y || !z || !flags) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ MovePlayerPosition{ .X = *x, .Y = *y, .Z = *z, .Flags = DecodeMovementFlags(*flags), } };
 			}
 			case MovePlayerPositionRotationPacketId: {
-				Aurore::Util::ByteReader reader(frame.Payload);
 				const auto x = reader.ReadDouble();
 				const auto y = reader.ReadDouble();
 				const auto z = reader.ReadDouble();
 				const auto yaw = reader.ReadFloat();
 				const auto pitch = reader.ReadFloat();
 				const auto flags = reader.ReadUnsignedByte();
-
-				if (!x || !y || !z || !yaw || !pitch || !flags)
-					return std::unexpected(ProtocolError::MalformedPacket);
-				if (!reader.Empty())
-					return std::unexpected(ProtocolError::TrailingPacketData);
-
-				return Packet{
-					MovePlayerPositionRotation{
-						.X = *x,
-						.Y = *y,
-						.Z = *z,
-						.Yaw = *yaw,
-						.Pitch = *pitch,
-						.Flags = DecodeMovementFlags(*flags),
-					}
-				};
+				if (!x || !y || !z || !yaw || !pitch || !flags) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ MovePlayerPositionRotation{ .X = *x, .Y = *y, .Z = *z, .Yaw = *yaw, .Pitch = *pitch, .Flags = DecodeMovementFlags(*flags), } };
 			}
 			case MovePlayerRotationPacketId: {
-				Aurore::Util::ByteReader reader(frame.Payload);
 				const auto yaw = reader.ReadFloat();
 				const auto pitch = reader.ReadFloat();
 				const auto flags = reader.ReadUnsignedByte();
-
-				if (!yaw || !pitch || !flags)
-					return std::unexpected(ProtocolError::MalformedPacket);
-				if (!reader.Empty())
-					return std::unexpected(ProtocolError::TrailingPacketData);
-
-				return Packet{
-					MovePlayerRotation{
-						.Yaw = *yaw,
-						.Pitch = *pitch,
-						.Flags = DecodeMovementFlags(*flags),
-					}
-				};
+				if (!yaw || !pitch || !flags) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ MovePlayerRotation{ .Yaw = *yaw, .Pitch = *pitch, .Flags = DecodeMovementFlags(*flags), } };
 			}
 			case MovePlayerStatusOnlyPacketId: {
-				Aurore::Util::ByteReader reader(frame.Payload);
 				const auto flags = reader.ReadUnsignedByte();
-
-				if (!flags)
-					return std::unexpected(ProtocolError::MalformedPacket);
-				if (!reader.Empty())
-					return std::unexpected(ProtocolError::TrailingPacketData);
-
-				return Packet{
-					MovePlayerStatusOnly{
-						.Flags = DecodeMovementFlags(*flags),
-					}
-				};
+				if (!flags) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ MovePlayerStatusOnly{ .Flags = DecodeMovementFlags(*flags), } };
 			}
 			case PlayerInputPacketId: {
-				Aurore::Util::ByteReader reader(frame.Payload);
 				const auto flags = reader.ReadUnsignedByte();
-
-				if (!flags)
-					return std::unexpected(ProtocolError::MalformedPacket);
-				if (!reader.Empty())
-					return std::unexpected(ProtocolError::TrailingPacketData);
-
-				return Packet{
-					PlayerInput{
-						.Flags = DecodePlayerInputFlags(*flags),
-					}
-				};
+				if (!flags) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ PlayerInput{ .Flags = DecodePlayerInputFlags(*flags), } };
 			}
 			case PlayerLoadedPacketId:
 				return DecodeEmptyPacket(frame, Packet{ PlayerLoaded{} });
+			case PlayerCommandPacketId: {
+				const auto entity = reader.ReadVarInt(), action = reader.ReadVarInt(), boost = reader.ReadVarInt();
+				if (!entity || !action || !boost || *entity < 0 || *action < 0 || *action > 6 || *boost < 0 || *boost > 100)
+					return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ PlayerCommand{ .EntityId = *entity, .ActionId = *action, .JumpBoost = *boost } };
+			}
+			case PlayerAbilitiesPacketId: {
+				const auto flags = reader.ReadUnsignedByte();
+				if (!flags || (*flags & 0xFCu) != 0) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ PlayerAbilities{.Flying = (*flags & 0x02u) != 0 } };
+			}
+			case SetCarriedItemPacketId: {
+				const auto slot = reader.ReadInt16();
+				if (!slot || *slot < 0 || *slot > 8) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ SetCarriedItem{.Slot = *slot } };
+			}
+			case ContainerClosePacketId: {
+				const auto container = reader.ReadVarInt();
+				if (!container || *container < 0) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ ContainerClose{.ContainerId = *container } };
+			}
+			case SwingPacketId: {
+				const auto hand = reader.ReadVarInt();
+				if (!hand || *hand < 0 || *hand > 1) return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ Swing{.Hand = *hand } };
+			}
+			case PlayerActionPacketId: {
+				const auto action = reader.ReadVarInt();
+				const auto position = reader.ReadInt64();
+				const auto face = reader.ReadUnsignedByte();
+				const auto sequence = reader.ReadVarInt();
+				if (!action || !position || !face || !sequence || *action < 0 || *action > 7 || *face > 5 || *sequence < 0)
+					return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ DeferredInteraction{.PacketId = frame.PacketId, .Sequence = *sequence } };
+			}
+			case UseItemOnPacketId: {
+				const auto hand = reader.ReadVarInt();
+				const auto position = reader.ReadInt64();
+				const auto face = reader.ReadVarInt();
+				const auto x = reader.ReadFloat(), y = reader.ReadFloat(), z = reader.ReadFloat();
+				const auto inside = reader.ReadBool(), border = reader.ReadBool();
+				const auto sequence = reader.ReadVarInt();
+				if (!hand || !position || !face || !x || !y || !z || !inside || !border || !sequence
+					|| *hand < 0 || *hand > 1 || *face < 0 || *face > 5 || *sequence < 0
+					|| !std::isfinite(*x) || !std::isfinite(*y) || !std::isfinite(*z))
+					return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ DeferredInteraction{.PacketId = frame.PacketId, .Sequence = *sequence } };
+			}
+			case UseItemPacketId: {
+				const auto hand = reader.ReadVarInt(), sequence = reader.ReadVarInt();
+				const auto yaw = reader.ReadFloat(), pitch = reader.ReadFloat();
+				if (!hand || !sequence || !yaw || !pitch || *hand < 0 || *hand > 1 || *sequence < 0
+					|| !std::isfinite(*yaw) || !std::isfinite(*pitch))
+					return std::unexpected(ProtocolError::MalformedPacket);
+				if (!reader.Empty()) return std::unexpected(ProtocolError::TrailingPacketData);
+				return Packet{ DeferredInteraction{.PacketId = frame.PacketId, .Sequence = *sequence } };
+			}
+			case SetCreativeModeSlotPacketId: {
+				// The modern item-component payload is not decoded in First Light.
+				// Hard limit applies *in addition* to the normal framed-packet limit.
+				if (frame.Payload.size() > 64 * 1024)
+					return std::unexpected(ProtocolError::MalformedPacket);
+				const auto slot = reader.ReadInt16();
+				if (!slot || reader.Empty()) return std::unexpected(ProtocolError::MalformedPacket);
+				return Packet{ DeferredInteraction{.PacketId = frame.PacketId, .Sequence = std::nullopt } };
+			}
+			case ContainerClickPacketId: {
+				if (frame.Payload.size() > 64 * 1024)
+					return std::unexpected(ProtocolError::MalformedPacket);
+				const auto container = reader.ReadVarInt(), state = reader.ReadVarInt();
+				const auto slot = reader.ReadInt16();
+				const auto button = reader.ReadUnsignedByte();
+				const auto mode = reader.ReadVarInt();
+				if (!container || !state || !slot || !button || !mode || *container < 0 || *state < 0
+					|| *mode < 0 || *mode > 6 || reader.Empty())
+					return std::unexpected(ProtocolError::MalformedPacket);
+				// Changed slot and hashed-slot data intentionally remain opaque.
+				return Packet{ DeferredInteraction{.PacketId = frame.PacketId, .Sequence = std::nullopt } };
+			}
 			default:
 				return std::unexpected(ProtocolError::UnexpectedPacket);
 			}

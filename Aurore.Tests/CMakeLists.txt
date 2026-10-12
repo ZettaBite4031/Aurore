@@ -12,6 +12,7 @@ set(
     ConfigurationTests.cpp
     DataPreparationServiceTests.cpp
     DataPreparationTests.cpp
+    FirstLightInputTests.cpp
     JavaRuntimeTests.cpp
     LoginRequestTests.cpp
     MinecraftDataCorpusTests.cpp

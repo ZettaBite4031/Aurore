@@ -331,6 +331,41 @@ namespace Aurore::Protocol {
 		return action;
 	}
 
+	// First Light recognizes ordinary client intent, but doesn't yet implement
+	// gameplay, inventories, entity animation, or authoritative sprint physics.
+	// Those effects belong to Alpha 1, not an accidental pseudo-simulation.
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Packets::Play::Serverbound::PlayerAbilities& packet) {
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Packets::Play::Serverbound::PlayerCommand& packet) {
+		return ProtocolAction{};
+	}
+	
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Packets::Play::Serverbound::SetCarriedItem& packet) {
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Packets::Play::Serverbound::ContainerClose& packet) {
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Packets::Play::Serverbound::Swing& packet) {
+		return ProtocolAction{};
+	}
+
+	ProtocolHandleResult ProtocolSession::HandlePlayPacket(const Packets::Play::Serverbound::DeferredInteraction& packet) {
+		ProtocolAction action;
+		if (packet.Sequence.has_value()) 
+			action.OutboundPackets.emplace_back(PreparedPacketFrame{
+				.Frame = Play::Clientbound::Encode(Play::Clientbound::BlockChangedAck{
+					.Sequence = *packet.Sequence,
+				}),
+			});
+		return action;
+	}
+
+
 	ProtocolHandleResult ProtocolSession::ResolveLogin(const LoginAcceptedResolution& resolution) {
 		if (!MatchesPendingLoginRequest(resolution.Id) || resolution.Username.empty() || resolution.ProfileId.IsNil())
 			return std::unexpected(ProtocolError::InvalidRequestResolution);
