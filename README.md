@@ -2,15 +2,15 @@
 
 # Aurore
 
-### A modern C++ Minecraft server built from the wire up.
+### A Minecraft-compatible server, built from the wire up in C++23.
 
-**Protocol-first · Explicit ownership · Bounded resources · Deterministic state**
+**Protocol-first · Explicit ownership · Bounded resources · Vanilla fidelity**
 
 [![Build and Test](https://github.com/ZettaBite4031/Aurore/actions/workflows/ci.yml/badge.svg)](https://github.com/ZettaBite4031/Aurore/actions/workflows/ci.yml)
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-5B7FFF?style=flat&logo=cplusplus&logoColor=white)
 ![Minecraft 1.21.11](https://img.shields.io/badge/Minecraft-1.21.11-65A765?style=flat)
 ![Protocol 774](https://img.shields.io/badge/Protocol-774-8B6FCF?style=flat)
-![Status](https://img.shields.io/badge/Status-Pre--Alpha-D88945?style=flat)
+![Status: First Light](https://img.shields.io/badge/Status-First%20Light-D88945?style=flat)
 [![License: MIT](https://img.shields.io/badge/License-MIT-5D6B7A?style=flat)](LICENSE.txt)
 
 **Windows x64 · Linux x86-64 · CMake-first**
@@ -19,456 +19,180 @@
 
 </div>
 
-> [!WARNING]
-> Aurore is not playable yet. It is active pre-alpha systems work, not a production Minecraft server.
-
 > [!IMPORTANT]
-> Aurore is an independent project. It is not an official Minecraft product and is not approved by or associated with Mojang Studios or Microsoft.
+> Aurore is an **independent, unofficial** project. It is not affiliated with, endorsed by, sponsored by, or approved by Mojang Studios or Microsoft.
 
----
+> [!WARNING]
+> **First Light is a technical proof of concept, not a playable or production-ready Minecraft server.** You can connect and stand in a tiny world, but gameplay, persistence, and online account authentication are not implemented. Keep it on a trusted local network for now.
 
-## The short version
+## Hello, world
 
-Aurore is a from-scratch Minecraft-compatible server written in modern C++.
+Aurore is an original Minecraft-compatible server implementation written in modern C++. It doesn't wrap or embed the vanilla server. Instead, it builds the protocol, networking, runtime, and world model as independent systems, with tests to make sure those systems agree on what happens next.
 
-There is no vanilla server hiding underneath it and no large framework quietly doing the interesting parts. Networking, protocol state, registry synchronization, client lifecycle, world ownership, and eventually gameplay are being built as explicit systems with testable boundaries.
+I started Aurore because Minecraft is fascinating, C++ is fascinating, and understanding how a server works all the way down to its sockets seemed like a very good way to spend my time. What began as a protocol experiment is growing into a longer-term attempt at a fast, faithful, understandable Minecraft platform.
 
-The current compatibility target is **Minecraft: Java Edition 1.21.11 / protocol 774**.
+The current compatibility target is **Minecraft: Java Edition 1.21.11 (protocol 774)**. Other versions are not supported by First Light.
 
-The first major protocol frontier is now complete:
+## First Light: what works today
 
-> **An unmodified vanilla 1.21.11 client can connect to Aurore, complete Configuration using real generated vanilla registry data, send serverbound Finish Configuration, and be formally admitted by Core into Play.**
-
-That does **not** mean the server is playable yet. Aurore currently stops at the Play boundary. The next work is the minimum valid Play bootstrap and the beginning of **First Light**.
-
----
-
-## Current frontier
+**`v0.1.0-first-light`** is Aurore's first end-to-end milestone. An unmodified vanilla 1.21.11 client can connect through the normal protocol phases, enter Play, receive a small world, and remain connected while moving around.
 
 ```text
- HANDSHAKE          STATUS             LOGIN          CONFIGURATION             PLAY
-    READY             READY             READY             READY              NEXT FRONTIER
-      ●─────────────────●─────────────────●─────────────────●────────────────────◐
-                                                                                │
-                                                                     minimum Play bootstrap
+Handshake ──► Status
+     │
+     └──────► Login ──► Configuration ──► Play
+                         registries        │
+                         and tags           ├─ initial player/world state
+                                            ├─ 3×3 chunk neighborhood
+                                            ├─ position + movement input
+                                            ├─ keepalives + timeouts
+                                            └─ clean client lifecycle
 ```
 
-Aurore can currently:
+Implemented for this milestone:
 
-- complete Handshake and Status with an unmodified vanilla 1.21.11 client;
-- complete offline Login and Core identity admission;
-- enter Configuration and retain Client Information and client brand data;
-- send Feature Flags and negotiate Known Packs;
-- defer registry materialization until the client's Known Packs response;
-- prepare authoritative Minecraft 1.21.11 data from the official server artifact;
-- import that generated corpus into an immutable, generation-tracked registry snapshot;
-- send real Registry Data and Update Tags derived from the imported vanilla corpus;
-- send clientbound Finish Configuration;
-- receive vanilla's serverbound Finish Configuration acknowledgement;
-- transition the protocol session and Core lifecycle from Configuration into Play;
-- formally recognize the admitted identity as a joined player.
+- Native, bounded network transport using **IOCP** on Windows and **epoll** on Linux.
+- Handshake, server Status, **offline-mode Login**, and the Configuration exchange.
+- Minecraft data preparation from official sources, integrity checks, cached generation, and validated registry/tag import.
+- An immutable, generation-tracked registry snapshot shared consistently across a Configuration session.
+- First Play bootstrap, player admission, position synchronization, and an initial chunk batch.
+- A **5×5 grass platform** with dirt and stone underneath, inside a **3×3 transmitted chunk neighborhood**. Surrounding chunks are effectively empty.
+- Player movement input, initial teleport acknowledgement, chunk-batch feedback, client-loaded notification, and server-issued keepalives.
+- Explicit disconnect, timeout, shutdown, and resource-cleanup paths, backed by unit, integration, loopback, and stress tests.
 
-The current intentional stopping point is **Play admission**. Aurore does not yet send the Play-state bootstrap required to place the player into a world, so a vanilla client will not remain in a playable session after the transition.
+The small world is intentional. First Light is about proving that the server can reach and maintain a real Play session, **not** about disguising an unfinished game as a complete one.
 
-That is now the next frontier.
+### What is *not* implemented
 
----
+There is no meaningful survival or creative gameplay yet: no persistent world or terrain generation, no working block placement/breaking, no real inventory or crafting system, no mob gameplay, no commands/permissions, and no production multiplayer security. Unsupported client actions may be ignored or rejected, and some may disconnect the session. The implementation is currently designed for trusted local testing, not internet-facing public hosting.
 
-## The production data path
+**Alpha 1** will begin turning the proof of concept into an interactive world. See the [roadmap](docs/ROADMAP.md).
 
-Aurore's production server no longer depends on the synthetic registry snapshot.
+## Getting started
 
-The normal startup path is:
+### Downloading a release
 
-```text
-        Mojang version metadata
-                  │
-                  ▼
-        official server artifact
-                  │
-          SHA-1 verification
-                  │
-                  ▼
-      Minecraft data generation
-                  │
-       content-addressed cache
-                  │
-                  ▼
-      validated generated corpus
-                  │
-                  ▼
-       VanillaDataImporter
-                  │
-                  ▼
-       immutable RegistrySnapshot
-                  │
-                  ▼
-       Core::ServerBootstrap
-                  │
-                  ▼
-      protocol-774 Configuration
-                  │
-                  ▼
-           vanilla client
-```
+The First Light release is intended to offer three downloads:
 
-Generated data is keyed by the server artifact SHA-1. A complete existing generation is validated and reused on later launches instead of being regenerated every time. Partial or invalid generation output is replaced.
-
-For development and convergence testing, an already generated corpus can also be supplied directly through:
-
-```text
-AURORE_MINECRAFT_DATA_ROOT
-```
-
-The checked-in synthetic registry factory still exists as a deterministic test fixture. It is no longer the normal production startup source.
-
----
-
-## Vanilla registry import
-
-`Aurore.Data` now translates the Minecraft 1.21.11 generated corpus into Aurore's normalized registry model before networking opens.
-
-The importer currently covers:
-
-- typed block and item identity registries using Mojang protocol IDs;
-- typed dimension type and biome registries;
-- all **23 protocol-774 synchronized registries** required by the current Configuration contract;
-- static identity registries required for vanilla tag synchronization;
-- vanilla tag files across synchronized and static registry domains;
-- direct tag members and nested `#tag` references;
-- optional references;
-- required-reference validation;
-- cyclic tag detection;
-- deterministic flattened tag membership;
-- immutable snapshot publication.
-
-The protocol-774 compatibility manifest describes which registries carry entry data, which contribute tags only, and which representations are permitted on the wire. Mojang JSON remains inside `Aurore.Data`; Core and Protocol consume only Aurore's normalized immutable models.
-
-A full generated Minecraft 1.21.11 corpus is exercised by the opt-in importer integration test, while smaller deterministic fixtures cover individual failure and translation cases.
-
----
-
-## System shape
-
-Aurore is organized around ownership rather than convenience.
-
-```mermaid
-flowchart TD
-    Server["Aurore.Server<br/>process composition"]
-
-    Data["Aurore.Data<br/>Minecraft acquisition, generation & import"]
-    Core["Aurore.Core<br/>runtime policy & client lifecycle"]
-    Protocol["Aurore.Protocol<br/>Minecraft wire format & state"]
-    Network["Aurore.Network<br/>bounded byte transport"]
-    World["Aurore.World<br/>simulation ownership"]
-    Util["Aurore.Util<br/>value types, NBT, registries & snapshots"]
-
-    DataTool["Aurore.DataTool<br/>data preparation utility"]
-
-    Server --> Core
-    Server --> Data
-
-    DataTool --> Data
-
-    Core --> Protocol
-    Core --> Network
-    Core --> World
-
-    Data --> Util
-    Protocol --> Util
-    Core --> Util
-    World --> Util
-```
-
-The dependency rule is intentionally uncomplicated:
-
-> **Network moves bytes. Protocol understands Minecraft. Data prepares authoritative inputs. Core makes server decisions. World owns simulation. Server composes the process.**
-
-| Project | Responsibility |
+| Archive | Contents |
 |---|---|
-| `Aurore.Server` | Process entry point, production data bootstrap, and top-level composition |
-| `Aurore.Core` | Client lifecycle, identity, runtime policy, registry publication, Configuration approval, and Play admission |
-| `Aurore.Data` | Minecraft source acquisition, verification, generation, corpus validation, vanilla registry/tag import, and normalized snapshot construction |
-| `Aurore.DataTool` | Standalone entry point for exercising Minecraft data preparation |
-| `Aurore.Network` | Minecraft-agnostic transport, bounded queues, limits, and native backend lifecycle |
-| `Aurore.Protocol` | Framing, packet codecs, protocol state, requests/resolutions, registry compatibility, and Configuration sequencing |
-| `Aurore.Util` | Byte primitives, UUIDs, NBT, typed/generic registries, tags, and immutable snapshots |
-| `Aurore.World` | World ownership and explicit simulation/tick phases |
-| `Aurore.Tests` | Unit, component, protocol, contract, backend, process, data, and loopback verification |
+| `Aurore-v0.1.0-first-light-windows-x64.zip` | Windows Release build and required runtime files |
+| `Aurore-v0.1.0-first-light-linux-x86_64.zip` | Linux x86-64 Release build and required runtime files |
+| `Aurore-v0.1.0-first-light-source.zip` | Complete source snapshot, including pinned source dependencies |
 
-More detail lives in [Architecture](docs/ARCHITECTURE.md).
+Check the [Releases](https://github.com/ZettaBite4031/Aurore/releases) page for published assets and any platform-specific runtime requirements. The packages are prepared and validated according to [Releasing](docs/RELEASING.md); an asset is not available until it has actually been uploaded.
 
----
+### Building from source
 
-## What exists today
-
-### Transport
-
-Aurore has native **IOCP** and **epoll** network backends behind one Minecraft-agnostic transport contract. Connection lifecycle, queue limits, retained bytes, and failure behavior are explicit rather than left to an opaque networking framework.
-
-### Protocol
-
-Protocol 774 support currently covers the complete path through Configuration and into the Play boundary:
-
-```text
-Handshake
-├── Status
-└── Login
-    └── Configuration
-        ├── Client Information
-        ├── Custom Payload / client brand
-        ├── Feature Flags
-        ├── Known Packs
-        ├── Registry Data
-        ├── Update Tags
-        ├── Finish Configuration
-        └── serverbound Finish Configuration
-            └── Play admission
-```
-
-Protocol owns wire-state correctness. Core decides whether an authenticated connection is permitted to complete Configuration and enter Play.
-
-On successful completion, Core verifies that both the protocol state and client lifecycle agree on `Play` before emitting the formal player-join event.
-
-### Registry model
-
-Registry data is represented through immutable, generation-tracked snapshots.
-
-The current model supports:
-
-- typed domain registries;
-- generic synchronized network registries;
-- generic static identity registries;
-- typed and generic tag sections;
-- deterministic runtime-ID ordering;
-- optional entry payloads;
-- generation-local tag resolution;
-- protocol-specific compatibility manifests;
-- required/optional/forbidden entry and tag policies;
-- minimum-entry and dependency validation;
-- representation-collision validation.
-
-A client sees one coherent snapshot for an entire Configuration exchange. It cannot observe a half-published registry update.
-
-### Minecraft data pipeline
-
-`Aurore.Data` provides the complete version-specific data path currently required by Configuration:
-
-- official Mojang metadata and artifact resolution;
-- optional local JAR sources;
-- SHA-1 identity verification;
-- Java runtime discovery;
-- bounded child-process execution;
-- Minecraft data/report generation;
-- content-addressed generated-data reuse;
-- generated corpus validation;
-- vanilla registry import;
-- static protocol-ID identity import;
-- tag parsing and resolution;
-- immutable snapshot construction.
-
-The production executable prepares or reuses that data before constructing `Core::Server`.
-
----
-
-## Configuration: complete
-
-The Configuration milestone was defined by one concrete compatibility test:
-
-```text
-client ── Handshake / Login ───────────────────────────────► Aurore
-
-client ◄──────── Feature Flags / Select Known Packs ────── Aurore
-client ─────────────── Known Packs selection ─────────────► Aurore
-
-client ◄──────── Registry Data / Update Tags ───────────── Aurore
-client ◄──────────── Finish Configuration ──────────────── Aurore
-
-client ───────────── Finish Configuration ────────────────► Aurore
-
-                         │
-                         ▼
-
-             ProtocolState::Play
-             ClientLifecycleState::Play
-                         │
-                         ▼
-
-                Core player admission
-```
-
-That sequence now works against an **unmodified Minecraft 1.21.11 client using Aurore's production imported registry snapshot**.
-
-Configuration is therefore considered complete for the current development stage.
-
-Future work may return to Configuration if later Play-state implementation exposes a genuine compatibility defect, but there is no remaining planned Configuration milestone.
-
----
-
-## Build it
-
-Aurore uses **CMake as the canonical build system**. Dependencies are pinned as Git submodules and participate directly in the project graph.
-
-Clone with submodules:
+Clone with the pinned Git submodules:
 
 ```bash
 git clone --recurse-submodules https://github.com/ZettaBite4031/Aurore.git
 cd Aurore
 ```
 
-### Windows
-
-Baseline:
-
-- Windows x64;
-- Visual Studio 2026 with the MSVC v145 C++ workload;
-- CMake 3.25 or newer;
-- Git.
+**Windows:** Windows x64, Visual Studio 2026 with the C++ workload, and CMake 3.25+.
 
 ```powershell
-cmake --preset windows-debug
-cmake --build --preset windows-debug --parallel
-ctest --preset windows-debug
+cmake --preset windows-release
+cmake --build --preset windows-release --parallel
+ctest --preset windows-release
 ```
 
-The optional PowerShell wrapper provides the same workflow:
+**Linux:** Linux x86-64, CMake 3.25+, Ninja, a toolchain with Aurore's required C++23 library support, and libcurl development headers. On Debian/Ubuntu, install `libcurl4-openssl-dev` along with the regular C++ build tools.
+
+```bash
+cmake --preset linux-release
+cmake --build --preset linux-release --parallel
+ctest --preset linux-release
+```
+
+Debug presets and full setup instructions live in [Development](docs/DEVELOPMENT.md).
+
+### Running the server
+
+Run from the directory where you want Aurore to keep its `config/` and `cache/` folders. The default configuration is created at **`config/aurore.json` relative to the working directory**. It listens on port `25565`, bound to `0.0.0.0` by default. For local testing, prefer `127.0.0.1` as the bind address and connect your vanilla 1.21.11 client to `localhost`.
+
+Windows build output:
 
 ```powershell
-./scripts/build.ps1 -Configuration Debug
+./out/build/windows-release/bin/Aurore.Server.exe
 ```
 
-### Linux
-
-Baseline:
-
-- x86-64 Linux;
-- CMake 3.25 or newer;
-- Ninja;
-- a sufficiently complete C++23 GCC or Clang toolchain;
-- Git.
+Linux build output:
 
 ```bash
-cmake --preset linux-debug
-cmake --build --preset linux-debug --parallel
-ctest --preset linux-debug
+./out/build/linux-release/bin/Aurore.Server
 ```
 
-Or:
+On its first startup, Aurore prepares Minecraft's required data from official sources. This may need network access and a compatible installed **Java runtime**. Subsequent startups can reuse a validated, content-addressed cache. Aurore itself is native C++; Java is used for the upstream data-generation step, not to run the server.
 
-```bash
-./scripts/build.sh Debug
-```
-
-Release presets and the complete development workflow are documented in [Development](docs/DEVELOPMENT.md).
+To use an existing generated corpus, set `AURORE_MINECRAFT_DATA_ROOT` to the **SHA-1-named generation directory** containing `reports/` and `data/`. Set `AURORE_JAVA_EXECUTABLE` to a specific Java executable when necessary. Neither the corpus nor Mojang's server artifact is included in Aurore's releases.
 
 > [!NOTE]
-> A Java runtime is not required to build Aurore itself. It is required when Aurore needs to generate Minecraft's raw server data. A valid cached generation or an explicit existing corpus can be reused on later launches.
+> First Light implements offline-mode login for local protocol testing. It **does not verify ownership of Minecraft accounts**. Do not treat it as an authenticated public server.
 
----
+## How Aurore is organized
 
-## Run it
-
-Normal server startup prepares or reuses the pinned Minecraft 1.21.11 data automatically:
-
-```powershell
-./out/build/windows-debug/bin/Aurore.Server.exe
-```
-
-To force Aurore to use an already generated corpus, set the generation root containing `reports/registries.json` and `data/minecraft`:
-
-```powershell
-$env:AURORE_MINECRAFT_DATA_ROOT = "C:\path\to\generation\<server-sha1>"
-./out/build/windows-debug/bin/Aurore.Server.exe
-```
-
-An explicit Java executable can also be supplied when raw generation is needed:
-
-```powershell
-$env:AURORE_JAVA_EXECUTABLE = "C:\path\to\java.exe"
-```
-
-A successful connection currently reaches Play admission, but no Play-state bootstrap packets are sent yet.
-
----
-
-## First Light
-
-**First Light** is now the active end-to-end server milestone.
-
-Configuration convergence is complete. The next goal is deliberately small: establish the minimum valid Play bootstrap, keep one vanilla player synchronized in one small world context, and disconnect cleanly.
-
-That means the next work begins after:
-
-```text
-Configuration
-     │
-     ▼
-   Play
-     │
-     ▼
-minimum client bootstrap
-     │
-     ▼
-one player
-one small world context
-stable synchronization
-```
-
-Broad chunk generation, entity systems, inventory, commands, persistence, online authentication, compression, and a public mod API are not prerequisites unless the minimum client path proves otherwise.
-
-Aurore grows by making one path real before widening it.
-
-See the [Roadmap](docs/ROADMAP.md) for the broader milestone structure.
-
----
-
-## Engineering character
-
-Aurore deliberately favors:
-
-- explicit ownership over shared mutable state;
-- deterministic publication over partially visible mutation;
-- bounded resources over invisible growth;
-- typed boundaries over implicit subsystem coupling;
-- visible execution order over callback fog;
-- measured abstractions over speculative frameworks;
-- tests at subsystem boundaries, not only inside individual classes.
-
-Performance matters, but understandable ownership and predictable behavior come first. Fast nonsense is still nonsense.
-
----
-
-## The eventual Aurore client
-
-The Aurore name is intended to cover two related products:
-
-| Product | Direction |
+| Project | Responsibility |
 |---|---|
-| **Aurore Server** | The C++ server runtime being developed in this repository |
-| **Aurore Client** | A future custom client focused on performance, rendering, interface design, accessibility, and modding |
+| `Aurore.Server` | Startup, production data preparation, and application composition |
+| `Aurore.Core` | Runtime policy, player admission, connection lifecycle, and orchestration |
+| `Aurore.Network` | Native socket backends, bounded queues, and transport lifecycle |
+| `Aurore.Protocol` | Packet framing, codecs, states, registry synchronization, and Play messages |
+| `Aurore.Data` | Official-source resolution, local generation, cache verification, and vanilla data import |
+| `Aurore.World` | Dimensions, players, chunks, and ordered simulation phases |
+| `Aurore.Util` | Reusable values, byte/NBT tools, registries, and immutable snapshots |
+| `Aurore.DataTool` | Standalone data-preparation utility |
+| `Aurore.Tests` | Tests spanning protocols, subsystems, real sockets, and failure paths |
 
-They share a product identity, not a runtime or executable.
+The central rule is simple: **Network moves bytes, Protocol understands packets, Data prepares authoritative inputs, Core makes decisions, World owns simulation, and Server puts it all together.**
 
-The client has not been started. It stays that way until the server has something worth connecting to.
+Aurore is written to keep observable order and state ownership understandable. Performance is a goal, but correctness and compatibility provide the baseline from which performance work can actually be measured. More detail: [Architecture](docs/ARCHITECTURE.md).
 
----
+## Future vision
+
+First Light is one tiny piece of a much larger idea. These are **directions to explore**, not implemented features or promises of a delivery date.
+
+**Faithful Minecraft behavior.** The goal is to follow vanilla behavior closely enough that technical builds, subtle update ordering, and even compatibility-sensitive quirks can continue to work. A future server might offer explicit fidelity/performance modes for situations where different tradeoffs are acceptable, without silently changing behavior.
+
+**Performance with evidence.** More efficient networking, world ticking, scheduling, memory ownership, and eventually profiling-driven parallelism should make Aurore fast for real workloads, not merely impressive in a synthetic benchmark.
+
+**A platform, not just a process.** Extensible server systems, version-aware protocol boundaries, potential cross-version and Java/Bedrock interoperability, and long-term distributed-server ideas all deserve investigation once the basic game works. Each would need its own design and compatibility proof.
+
+**An eventual Aurore client.** A separate client project might one day explore rendering, responsiveness, accessibility, and customization. It isn't part of this repository or the First Light release. No client assets or implementation are currently promised.
+
+Aurore is a passion project. The long-term vision is ambitious because exploring interesting systems is the entire point. The [roadmap](docs/ROADMAP.md) distinguishes near-term milestones from these bigger questions.
+
+## Contributing and contact
+
+Questions, suggestions, interoperability reports, and carefully scoped contributions are welcome. Read [Contributing](CONTRIBUTING.md) and [Development](docs/DEVELOPMENT.md) first.
+
+- **Discord:** `@mirathatnardo`
+- **Telegram:** `@mirathatnardo`
+- **Email:** *Not configured yet*
+
+For reproducible bugs, [GitHub Issues](https://github.com/ZettaBite4031/Aurore/issues) are also useful. Please do not publish credentials or private connection details in an issue.
 
 ## Documentation
 
-| Document | Covers |
+| Document | Subject |
 |---|---|
-| [Architecture](docs/ARCHITECTURE.md) | Subsystem ownership, dependencies, and runtime flow |
-| [Development](docs/DEVELOPMENT.md) | Toolchains, CMake presets, testing, dependencies, and workflow |
-| [Protocol and data](docs/PROTOCOL_AND_DATA.md) | Protocol boundaries, registry/data contracts, and compatibility work |
-| [Roadmap](docs/ROADMAP.md) | Vertical slices, First Light, and future direction |
-| [Legal and provenance](docs/LEGAL_AND_PROVENANCE.md) | Clean implementation and data provenance boundaries |
-| [Contributing](CONTRIBUTING.md) | Contribution expectations |
-| [Third-party notices](THIRD_PARTY_NOTICES.md) | Dependency provenance and pinned third-party components |
+| [Architecture](docs/ARCHITECTURE.md) | Ownership, boundaries, and server execution |
+| [Development](docs/DEVELOPMENT.md) | Toolchains, building, testing, runtime setup |
+| [Protocol and Data](docs/PROTOCOL_AND_DATA.md) | Wire contracts and local Minecraft data preparation |
+| [Roadmap](docs/ROADMAP.md) | First Light, Alpha milestones, and longer-term goals |
+| [Releasing](docs/RELEASING.md) | Source and binary packaging, verification, and tagging |
+| [Legal and Provenance](docs/LEGAL_AND_PROVENANCE.md) | Independent implementation and distribution practices |
+| [To Mojang](docs/TO_MOJANG.md) | A personal note about the project and an invitation to talk |
+| [Third-Party Notices](THIRD_PARTY_NOTICES.md) | Pinned dependencies and licensing status |
 
----
+## Independence and interoperability
+
+Aurore is independently developed under the ZettaTech Systems project name. **Aurore and ZettaTech Systems are not affiliated with, sponsored by, endorsed by, or officially associated with Mojang Studios or Microsoft.** Minecraft and related names are mentioned only to explain compatibility.
+
+Aurore's distributed project code is original; release packages must not bundle official Minecraft software, assets, or locally generated Minecraft datasets. Where the server needs upstream data, it retrieves and processes that material separately on the user's machine. For the project's approach and an open invitation to discuss concerns, see [Legal and Provenance](docs/LEGAL_AND_PROVENANCE.md) and [To Mojang](docs/TO_MOJANG.md).
 
 ## License
 
-Aurore-authored source and documentation are available under the [MIT License](LICENSE.txt).
-
-Dependencies, Minecraft, Mojang Studios, Microsoft, and other third-party names and materials remain subject to their respective terms.
+Aurore-authored code and documentation are licensed under [MIT](LICENSE.txt). Third-party dependencies and Minecraft-related materials remain subject to their respective licenses and terms.

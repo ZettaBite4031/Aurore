@@ -1,63 +1,115 @@
 # Protocol and Data
 
-## Target and current evidence
+Aurore's first real Minecraft client connection depends on two separate things going right: the **wire protocol** must be correct, and the **registry data** sent over it must be complete and consistent. First Light proves the necessary path for one specific client version; it doesn't claim implementation of every packet or rule.
 
-The current compatibility target is Minecraft: Java Edition 1.21.11, protocol 774.
+## Supported target and evidence
 
-An unmodified client has been observed to:
+| Field | First Light |
+|---|---|
+| Edition | Minecraft: Java Edition |
+| Version | 1.21.11 |
+| Network protocol | 774 |
+| Login authentication | Offline-mode development implementation |
+| Reaches Play with vanilla client | Yes, tested manually |
+| World | Fixed First Light platform and surrounding empty chunk columns |
+| Other versions / Bedrock | Not supported |
 
-1. complete Handshake;
-2. complete offline Login;
-3. accept Feature Flags and participate in Known Packs selection;
-4. decode Registry Data and Update Tags envelopes;
-5. receive clientbound Finish Configuration;
-6. reject the incomplete synthetic registry dataset before sending serverbound Finish Configuration.
+Compatibility is **version-specific**. Protocol IDs, ordering, registry schemas, and feature negotiation must be reviewed again for each future target version. Aurore is not yet a multi-version proxy or Bedrock bridge.
 
-The demonstrated failure is registry-content compatibility, not a claim that all framing or sequencing is universally complete.
-
-## Protocol states
-
-The implemented state paths are:
+## Protocol state flow
 
 ```text
-Handshake -> Status -> Disconnected
-Handshake -> Login -> Configuration -> internal Play admission
+Handshake
+├── Status (status query / ping, then closure)
+└── Login (offline identity)
+    └── Configuration
+        ├── client information and optional brand
+        ├── feature flags
+        ├── known-packs negotiation
+        ├── registry data and update tags
+        ├── clientbound Finish Configuration
+        └── serverbound Finish Configuration
+            └── Play
+                ├── player admission / initial world state
+                ├── position + initial teleport acknowledgement
+                ├── 3×3 chunk batch and feedback
+                ├── client world-loaded notification
+                ├── movement and selected safe input packets
+                └── keepalive + disconnection lifecycle
 ```
 
-Protocol owns packet IDs, direction, decoding, framing, transformations, state validation, and typed requests/resolutions. It does not decide whether an identity should be admitted or perform network I/O.
+The protocol layer owns decoding, encoding, framing, protocol-state validity, and typed requests or resolutions. Core owns policy, identity/player admission, timeouts, and World changes. Network only transports bytes.
 
-State changes are transactional: validation and required output construction complete before authoritative state advances. Invalid packets, stale request IDs, invalid Known Packs selections, and generation mismatches fail explicitly.
+Transitions are validated before authoritative state is committed. Malformed input and invalid state transitions fail explicitly and must not corrupt other sessions.
 
-## Configuration sequence
+## Configuration contracts
 
-The present sequence supports Feature Flags, Known Packs, Registry Data, Update Tags, and Finish Configuration. A move-only transmission plan retains the registry generation used to build the exchange.
+Aurore negotiates Feature Flags and Known Packs. Registry Data and Update Tags are derived from a **single retained `RegistrySnapshot` generation**, and protocol-774 compatibility rules determine expected sections and payload policies.
 
-The compatibility model includes:
+The First Light importer currently handles all **23 synchronized registries** required by the Configuration contract, as well as supporting static identity registries and tag domains. Typed block/item registries, dimension types, biomes, generic synchronized entries, nested tags, optional references, required-reference validation, cycle detection, runtime-ID order, and immutable publication are exercised by tests.
 
-- a protocol-774 registry manifest;
-- typed and generic registry representations;
-- required, optional, and forbidden entry-data and tag policies;
-- dependency and minimum-count validation;
-- an adapter from immutable snapshots to manifest-facing inventory.
+Configuration can proceed to Play only after the required exchange and acknowledgements complete. There is no blanket claim that optional or future configuration packets are implemented.
 
-The remaining compatibility work is to make post-negotiation materialization selection-aware and manifest-driven, then supply a complete provenance-safe dataset. That belongs to the next implementation phase, not this cleanup baseline.
+## First Light Play behavior
 
-## Data structures
+Core's Play bootstrap creates a player with a fixed spawn and sends the data needed to render a tiny Overworld platform. The World object stores one center chunk with **75 platform blocks** across three layers. Protocol serializes that center and eight neighboring mostly empty columns, including lighting data, because the vanilla client needs the surrounding columns to finish terrain readiness.
 
-`RegistrySnapshot` combines typed registries, typed tags, generic network registries, and generic tag sections under one immutable generation. Generic entries preserve runtime-ID order and optional NBT payload presence. Tag members resolve to generation-local runtime IDs during construction.
+The Play intake understands and handles the First Light subset: movement/rotation updates, acknowledgements for the initial teleport and chunk batch, the client-loaded notification, server-issued keepalive replies, client information, and selected input/interaction packets. Some interactions are deliberately parsed and deferred or acknowledged without changing world/inventory state. Others may be rejected. This is **not a general Play implementation**.
 
-Parsers and builders bound packet sizes, strings, arrays, NBT size and depth, registry counts, tag sections, tag members, and retained output. Incomplete transactional reads do not advance the caller-visible buffer position.
+Player state, KeepAliveTracker state, synchronization deadlines, and transport ownership must be cleaned up when a session closes. Incorrect acknowledgements are handled according to their specific contracts rather than silently treating every unexpected value as success.
 
-## Synthetic versus production data
+## Official-source data pipeline
 
-The checked-in synthetic generation exists to exercise ownership, encoding, ordering, validation, and lifetime rules. It intentionally does not reproduce a complete vanilla registry dataset and must not be described as production data.
+Normal startup uses `ProductionBootstrap` to prepare the source for the 1.21.11 registry snapshot:
 
-Future production data should use a versioned local cache containing source identity, hashes, target version, generator and schema versions, ordered registries, tags, and validation results. The loader must reject incompatible or ambiguous input and publish only a fully validated snapshot.
+```text
+Mojang version metadata
+      ↓
+official server-artifact identity and download
+      ↓
+SHA-1 verification
+      ↓
+Java-driven local report/data generation
+      ↓
+content-addressed generated-data cache
+      ↓
+corpus structure and identity validation
+      ↓
+VanillaDataImporter / normalized registries and tags
+      ↓
+immutable RegistrySnapshot
+      ↓
+Core::Server startup and Configuration
+```
 
-The repository and release artifacts must not contain official software, assets, or generated datasets whose redistribution rights have not been established. See [Legal and provenance policy](LEGAL_AND_PROVENANCE.md).
+This work happens on the user's machine, before the runtime accepts new clients. Aurore **does not ship Mojang's server JAR, generated registry dump, datapack files, textures, or other game assets** in its repository or planned release packages.
 
-## Interoperability iteration
+The generated corpus is keyed by the official server artifact's SHA-1. Existing complete generations are validated and reused; invalid or incomplete generations must not become authoritative. An alternative source path is available with `AURORE_MINECRAFT_DATA_ROOT`, pointing at the SHA-1 directory containing `reports/` and `data/`.
 
-For each manual compatibility run, record the Aurore revision, client version and protocol, data/generator identity, selected packs, last successful packet, first failure, and whether Configuration acknowledgement and Core Play admission occurred.
+`AURORE_JAVA_EXECUTABLE` selects a particular Java executable for the upstream generation step. It is not used to run the Aurore C++ server. The source, licensing, and redistribution boundaries are documented in [Legal and Provenance](LEGAL_AND_PROVENANCE.md).
 
-Fix the earliest demonstrated incompatibility, encode it in an automated regression test, and rerun. Avoid broad speculative changes based on later cascade errors.
+## Synthetic fixtures versus production data
+
+Synthetic registry snapshots are kept for deterministic tests and narrow failure cases. They are intentionally incomplete as vanilla data and are **not** the production server startup input. Production data uses the official-source pipeline and normalized import.
+
+Tests should use original, synthetic fixture values and avoid committing extracted Mojang data. Some higher-level tests can use a locally prepared corpus via explicit opt-in rather than making CI depend on downloaded Minecraft artifacts.
+
+## Limits and failure behavior
+
+Aurore bounds untrusted frame and packet sizes, array/string limits, NBT depth and bytes, registry/tag counts, network queues, retained events, connection counts, and deadlines. Configuration plans and snapshots are validated before publication. Receives can be partial and should remain valid until a full frame is available, within their respective caps.
+
+These limits are correctness and availability safeguards, not proof of public-server security. First Light has no online account verification, gameplay permissions, or production abuse protections.
+
+## Compatibility regression workflow
+
+For a client-side failure, record:
+
+1. Exact client edition/version and Aurore commit or tag.
+2. Relevant source data identity and whether a validated cache was reused.
+3. Last successfully completed protocol state and packet exchange.
+4. First observed error or disconnect, with logs stripped of private information.
+5. The smallest automated test that reproduces the failure without requiring proprietary files in the repository.
+
+Fix the earliest demonstrated incompatibility, verify the regression, then repeat the real-client test. Avoid introducing broad workarounds for later cascade symptoms.
+
+For runtime architecture, see [Architecture](ARCHITECTURE.md). For data provenance and distribution boundaries, see [Legal and Provenance](LEGAL_AND_PROVENANCE.md).

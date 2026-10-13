@@ -1,56 +1,70 @@
 # Roadmap
 
-Aurore is developed as vertical slices. A milestone is complete when a user-visible path works end to end and the underlying boundaries are tested—not when many disconnected systems exist in isolation.
+Aurore is built in **small, observable vertical slices**. Each milestone has a reason to exist, a concrete way to tell whether it works, and a deliberate list of things it *doesn't* try to accomplish.
 
-## Current baseline: clean foundations
+The intent isn't to rush from zero to a complete Minecraft clone in one leap. It's to make the foundation dependable enough that the next feature has somewhere solid to land.
 
-The cleanup baseline establishes:
+## First Light: `v0.1.0-first-light`
 
-- focused server and client-orchestration ownership;
-- protocol-owned diagnostics;
-- subsystem-focused test files;
-- one local/CI build path;
-- an accurate sample configuration;
-- a compact public documentation set.
+**Status: implementation and validation complete; release preparation in progress.**
 
-This phase intentionally adds no gameplay or new protocol reach.
+First Light answers the question: *Can an independently implemented C++ server put an unmodified Minecraft Java 1.21.11 client into a tiny world and maintain a healthy Play session?*
 
-## First Light: the playable proof
+Acceptance evidence:
 
-The next implementation goal is one small but genuine experience:
+- Handshake, Status, offline Login, and complete required Configuration negotiation.
+- Locally generated and imported real vanilla registries/tags.
+- First Play bootstrap, player/world admission, nine-column lit chunk transfer.
+- A fixed platform, movement input, position sync, keepalive, and session cleanup.
+- Bounded network resources and timeout/failure-path handling.
+- More than 550 automated tests reported passing, plus Debug/Release validation on Windows and Linux and a vanilla-client smoke test.
 
-- an unmodified client completes Configuration;
-- Core admits the retained registry generation into Play;
-- the server sends only the required Play bootstrap;
-- one player has explicit ownership in one tiny world context;
-- position, keep-alive, and disconnect behavior remain stable;
-- the path has automated coverage wherever proprietary client software is not required.
+First Light is **not** a release of playable Minecraft survival/creative gameplay, procedural worlds, persistent storage, or online authentication. The initial release is labeled a prerelease for that reason.
 
-Broad chunks, entities, inventories, commands, generation, and persistence are outside this slice unless the minimum client path proves one is mandatory.
+## Next: Alpha 1, the first interactive world
 
-## Work leading into First Light
+**Status: planned; scope is intentionally provisional.**
 
-1. Defer post-negotiation Configuration materialization until Known Packs selection.
-2. Drive Registry Data and Update Tags from the compatibility manifest.
-3. Define a deterministic, provenance-recorded local data cache.
-4. Load and validate a complete protocol-774 registry snapshot.
-5. Iterate against the earliest observed vanilla-client failure.
-6. Implement the minimum Play bootstrap only after Configuration completes.
+The next meaningful milestone is an actually interactive, deliberately small world. A sensible initial slice would include:
 
-## After First Light
+1. An authoritative block state model connecting player interactions to World state.
+2. Breaking and placing blocks through the relevant Play packets and confirmations.
+3. Correct world-to-client block update propagation.
+4. A simple inventory/held-item contract sufficient for those interactions.
+5. Player movement and interaction tests across disconnects, resets, and concurrent clients.
 
-Likely server work includes world storage and generation, block state, entities and tracking, inventory and containers, commands and permissions, save transactions, compression, batching, profiling, and online authentication. Exact ordering should follow measured vertical-slice value rather than this list.
+We should define Alpha 1's exact exit criteria before implementing it, rather than promise these details as a fixed release checklist today. Persistence, general terrain generation, and most survival systems need not arrive together with the first editable world.
 
-A public extension ABI should wait until ownership and compatibility contracts have survived real use. Early modding experiments may use internal APIs without promising stability.
+## Beyond Alpha 1
 
-## The future Aurore client
+Likely future work includes, in an order determined by compatibility needs:
 
-Aurore's long-range scope includes a separate custom client under the same brand. Its reasons to exist are different from the server's: rendering quality, performance, interface design, accessibility, and a cohesive modding experience.
+- More complete Play packet support and reliable chunk streaming.
+- Persistent world storage and save integrity.
+- Block updates, scheduled ticks, fluids, block entities, entities, and inventories.
+- Commands, permissions, authenticated public-server operation, and administration.
+- Terrain generation and richer simulation.
+- Observability, profiling, memory/performance work, and regression benchmarks.
+- Extension/modding interfaces once their ownership and compatibility contracts stabilize.
 
-The client should become its own repository and product boundary when the server has a credible end-to-end experience. Shared brand, protocol fixtures, and design language do not imply shared runtime code or release cadence.
+Aurore is intended to preserve vanilla behavior, including timing and ordering quirks that technical players depend on. Performance improvements should be benchmarked, tested, and documented. Explicit compatibility/performance profiles are a possible future design, not a shipped setting.
 
-The first client milestone should connect to something worth seeing. Until then, server First Light remains the recognition-building priority.
+## The wider vision
 
-## Success discipline
+There are bigger ideas worth exploring once the fundamentals work:
 
-Every milestone needs a written entry condition, observable exit condition, failure budget, and explicit list of deferred work. Cleanup, capability, and optimization should remain distinct enough that regressions can be traced and reviewed.
+**Multiple versions and editions.** Version-specific protocol contracts might eventually support more Java versions and potentially Bedrock clients. This is substantially more complex than changing a protocol number, and it's not implemented today.
+
+**High-performance simulation.** Strong ownership boundaries should make selective batching, reduced allocations, better work scheduling, and eventually safe multithreading possible. Preserve observable behavior unless the user explicitly selects a documented alternative.
+
+**Distributed server architecture.** Multiple cooperating instances, movement between servers, shared world services, and other approaches to scale are long-term research questions. First Light is one server process.
+
+**An independent Aurore client.** A separate project could eventually explore rendering, UI, accessibility, performance, and modding. It would need its own protocol, asset, and distribution review. The server must become worth connecting to first.
+
+Nothing here promises a release date, an API commitment, or guaranteed compatibility. Big ideas are welcome; shipping them is a separate engineering decision.
+
+## How we decide what to build
+
+Each milestone should explain its entry state, implemented behavior, observable success criteria, test strategy, and deliberately deferred features. Small targeted refactors are encouraged when they unblock a concrete path. Unmeasured hyperoptimization and speculative frameworks can wait.
+
+The first milestone is proof that Aurore can hold a connection to a real Minecraft world. The next milestone starts making that world respond.

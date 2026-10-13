@@ -1,76 +1,89 @@
-# Legal and Provenance Policy
+# Legal and Provenance
+
+Aurore is an independent Minecraft-compatible software project. This document explains **how we intend to build and distribute it responsibly**, not why anyone should or shouldn't bring a legal claim. It's a practical development policy, not legal advice.
 
 > [!IMPORTANT]
-> Aurore is not an official Minecraft product and is not approved by or associated with Mojang Studios or Microsoft.
+> Aurore and ZettaTech Systems are not affiliated with, approved by, sponsored by, or endorsed by Mojang Studios or Microsoft. Minecraft-related names are used descriptively to explain compatibility.
 
-This is a conservative project policy, not legal advice. It exists to prevent accidental inclusion or distribution of material that Aurore does not own or have permission to redistribute.
+## Original implementation
 
-## Independent implementation
+Aurore's source code is written independently. We work from published protocol information, lawful observation and interoperability testing, our own implementation notes, and original fixtures. We don't want copied or mechanically translated Minecraft implementation code in the project.
 
-Aurore is intended to be an original implementation based on public specifications, independently written notes, black-box interoperability testing, lawfully observed network behavior, original fixtures, and appropriately licensed dependencies.
+Our intent is to learn, experiment with server architecture and performance, and build original software that communicates with Minecraft clients. Aurore is not intended to replace a purchased copy of Minecraft or offer unauthorized access to the game.
 
-Do not incorporate copied or mechanically translated game source, decompiled implementation material, proprietary comments, official assets, or substantial protected content. Record compatibility behavior in implementation-neutral terms: inputs, outputs, ordering, limits, and failure behavior.
+The independent nature of the project is important to us, but **independence is not an exemption from applicable rights or terms**. We should keep the relevant sources and boundaries visible rather than make assumptions about blanket permissions.
 
-## Repository boundary
+## What we distribute
 
-The tracked repository may contain:
+The public Aurore repository and release packages may contain:
 
-- original Aurore source, documentation, schemas, and synthetic fixtures;
-- third-party material whose license permits the intended use and whose notices are preserved;
-- small factual compatibility metadata with recorded provenance;
-- reproducible generators that operate on user-selected local inputs.
+- Original Aurore source, documentation, configuration examples, and synthetic test fixtures.
+- Binaries built from that source, once their own redistribution dependencies have been checked.
+- Appropriately licensed third-party dependencies and their required notices.
+- Small implementation-independent compatibility facts needed by the software.
 
-It must not contain:
+They should **not** contain:
 
-- official client or server software;
-- official textures, models, audio, fonts, icons, or other assets;
-- copied or decompiled implementation code;
-- complete extracted registry, tag, report, or data-pack content without established redistribution rights;
-- user-derived local caches by default;
-- credentials, tokens, private keys, account/session data, or identifying packet captures;
-- material whose source is merely unknown or "found online."
+- Mojang-authored Minecraft client/server binaries, official assets, or copied implementation source.
+- Complete extracted Minecraft registry data, generated reports, datapacks, or local data caches by default.
+- Unreviewed third-party source or materials with unclear redistribution permission.
+- Credentials, account/session tokens, private captures, identifying logs, or secrets.
 
-## Data classes
+The fact that information was generated locally doesn't by itself give us permission to redistribute it. Local caches belong outside the repository and its release assets.
 
-| Class | Repository | Release |
-|---|---:|---:|
-| Original Aurore material | Allowed | Allowed under its stated license |
-| Verified openly licensed material | With source, revision, license, and notices | When all obligations are met |
-| User-supplied official input | Prohibited | Prohibited |
-| Data derived locally from user input | Prohibited by default | Prohibited by default |
-| Restricted reference material | Prohibited | Prohibited |
-| Unknown or unreviewed material | Prohibited | Prohibited |
+## Official-source data acquired locally
 
-Generating a file does not automatically create redistribution permission for the input or output.
+The First Light server needs registry and tag data corresponding to Minecraft: Java Edition 1.21.11. Rather than ship a copy of that data, Aurore:
 
-## Local data generation
+1. Resolves official Minecraft version metadata and the official server artifact on the **user's machine**.
+2. Downloads the artifact locally when necessary and verifies its source identity and SHA-1.
+3. Uses a compatible Java runtime to run the required upstream data-generation step locally.
+4. Validates the resulting corpus, stores it in a content-addressed cache, and imports normalized runtime models.
+5. Reuses a previously validated generation when possible.
 
-A future generator should require an explicit local input, hash that input, identify the target version and generator revision, produce deterministic output where practical, record output hashes and schema versions, and fail closed when provenance cannot be written.
+This acquisition is part of the existing production startup behavior. Alternatively, users may point Aurore to an already prepared corpus with `AURORE_MINECRAFT_DATA_ROOT`. No official artifact or generated corpus is included in Aurore's distributed source or binary archives.
 
-Generated caches belong outside the tracked tree, for example under `.local/`, and should be invalidated when the source hash, generator, schema, or target version changes. They must never include secrets or personal absolute paths in their manifests.
+Access to an official download endpoint is **not** a blanket grant of redistribution or other rights. The applicable Minecraft EULA, Usage Guidelines, and download terms still matter to users and to the project. We will revisit this workflow if those terms change or a legitimate concern is raised. Official materials and official-download processing remain separate from Aurore's MIT-licensed code.
 
-Automatic downloading of official software is outside the currently approved model and requires a fresh terms and distribution review.
+## Authentication and First Light's scope
 
-## Trademark and presentation
+First Light currently implements **offline-mode Login** for development and local compatibility testing. It does not check ownership of a Minecraft account and should **not** be advertised or deployed as an authenticated public server. The project's aim is not to facilitate access without a legitimate copy of Minecraft.
 
-Aurore must remain the dominant project name. Minecraft references are descriptive compatibility references and must not imply sponsorship or official status. Do not use official logos, assets, or trade dress as Aurore branding.
+A future public-hosting milestone should assess and implement appropriate official authentication, permission management, and related policy requirements before making the server available to untrusted users. The existence of an offline implementation is not a guarantee that offline hosting satisfies any particular platform rule or agreement.
 
-Public repositories, releases, websites, and user interfaces should display the non-affiliation statement and identify the actual project publisher. Add a durable public contact method before distributing binaries or offering a hosted or paid service.
+## Dependencies and licenses
 
-## Public-release gate
+Aurore-authored material uses the [MIT License](../LICENSE.txt). Dependencies have their own ownership and license requirements.
 
-Before the first public binary or generally available server package:
+- Sonnet is a separately maintained JSON library. Its developer intends to publish it under an attribution-preserving permissive open-source license, preferably MIT. The pinned revision reviewed for First Light did **not** contain a visible license file. **Don't treat that intention as a completed license grant.** Resolve the actual license in Sonnet's repository, update Aurore's pin, and record the resulting revision before binary publication.
+- GoogleTest is a test-only dependency and is licensed under BSD-3-Clause at the reviewed revision. The exact source pin is recorded in [Third-Party Notices](../THIRD_PARTY_NOTICES.md).
+- Binary packages may also depend on system libraries and compiler runtimes. Verify platform redistribution requirements and dynamic dependencies before publishing.
 
-1. verify the copyright holder and license text;
-2. review the then-current official EULA, usage guidelines, community standards, and relevant service terms;
-3. verify every dependency's exact revision, license, and notice obligations;
-4. inspect the release allowlist for official software, assets, local caches, credentials, and unreviewed generated data;
-5. document supported versions, authentication mode, omissions, and user responsibilities;
-6. resolve the intended vanilla-data acquisition and cache model;
-7. seek qualified legal review if distribution, monetization, automated acquisition, authentication, or data reuse creates material uncertainty.
+Updating a dependency means updating both its Git submodule revision and its notice, not just changing a number in a document.
 
-## Third-party dependencies
+## Contact and cooperation
 
-Current dependency sources and pins are recorded in [Third-party notices](../THIRD_PARTY_NOTICES.md). A permissive license on a tool does not necessarily license data produced by that tool.
+The intention is to be transparent and approachable. If Mojang Studios, Microsoft, a contributor, or another rights holder has a concrete concern about some part of Aurore, we'd welcome a respectful conversation, examine the details, and explore reasonable corrections. We won't make advance promises about the outcome of a conversation we haven't had.
 
-Revisit this policy when the project becomes public, prepares a binary release, adds online authentication, changes its data model, adds a hosted or paid offering, or introduces a new external dataset.
+A personal introduction for Mojang is available in [To Mojang](TO_MOJANG.md).
+
+Contact:
+
+- Discord: `@mirathatnardo`
+- Telegram: `@mirathatnardo`
+- Email: *Not configured yet*
+
+These are informal contact routes, not a formal legal-service address. Formal notices should use an appropriate available channel; when a dedicated project email is established, this document can be updated.
+
+## Release review
+
+Before publishing each new release:
+
+- Confirm that source and packages contain only the intended distributable files.
+- Review new dependencies, license obligations, and third-party notices.
+- Ensure official game data is not in the assets or source archives.
+- State supported versions, authentication behavior, and known limitations honestly.
+- Revisit relevant upstream terms when the download model, online access, client work, or distribution model changes.
+- Keep a clear path for corrections or legitimate concerns.
+
+See [Releasing](RELEASING.md) for the concrete packaging checklist. This policy is meant to make it easier to do the right thing while continuing to work on a project we care about.

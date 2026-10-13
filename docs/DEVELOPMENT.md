@@ -1,355 +1,218 @@
 # Development
 
-Aurore uses CMake as its canonical build system. The same project graph is exercised on Windows and Linux, in Debug and Release, by local presets and GitHub Actions.
+This is the practical guide to building, running, debugging, and testing Aurore. It covers **First Light**, the current C++23 server implementation.
 
-The current portability boundary is deliberate:
+## Supported platforms and toolchains
 
-- **Windows x64** is a functional runtime target using the IOCP network backend.
-- **Linux x86-64** is a functional runtime target using the epoll network backend.
-- **macOS** is represented in the platform/backend contract but is not currently a supported build or runtime target.
+| Platform | Runtime backend | Toolchain | Configuration |
+|---|---|---|---|
+| Windows x64 | IOCP | Visual Studio 2026, MSVC v145 C++ tools | Debug and Release |
+| Linux x86-64 | epoll | GCC or Clang with adequate C++23 library support | Debug and Release |
 
-## Toolchain baseline
+CMake **3.25+** and Git with submodule support are required. Linux builds use Ninja. The CMake configure step checks for the specific C++23 features Aurore uses, including `std::expected` and `std::format` with chrono formatting. A compiler claiming `-std=c++23` is not sufficient if its standard library lacks these features.
 
-Aurore requires:
-
-- CMake 3.25 or newer;
-- Git with submodule support;
-- a C++23-capable compiler and standard library.
-
-The configured toolchain must support the C++23 facilities Aurore already uses, including `std::expected` and `std::format` with chrono formatting. CMake checks this during configuration and fails early when the selected compiler/standard-library pair is insufficient.
-
-### Windows
-
-The canonical Windows presets currently target:
-
-- Windows x64;
-- Visual Studio 2026;
-- MSVC v145.
-
-PowerShell is only required for the optional `scripts/build.ps1` convenience wrapper. It is not the build-system source of truth.
-
-### Linux
-
-The canonical Linux presets currently target:
-
-- x86-64 Linux;
-- Ninja;
-- GCC or Clang with sufficient C++23 standard-library support.
-
-On Debian/Ubuntu/Linux Mint systems, the baseline tools are typically available with:
+On Debian/Ubuntu-family systems, start with:
 
 ```bash
 sudo apt update
-sudo apt install build-essential cmake ninja-build git
+sudo apt install build-essential cmake ninja-build git libcurl4-openssl-dev
 ```
 
-A newer compiler may be required when the distribution's default standard library lacks a C++23 facility used by Aurore.
+A newer compiler or CMake may be needed than those supplied by some distribution releases. Linux also needs the libcurl runtime library when running the server, and binary portability depends on the target system's C/C++ runtime compatibility.
 
-## Clone
+macOS and other platforms are **not supported** in First Light. The build has reserved platform/backend concepts for future porting, but no working macOS production network backend.
 
-Clone the repository and its pinned source dependencies together:
+## Get the source
 
 ```bash
 git clone --recurse-submodules https://github.com/ZettaBite4031/Aurore.git
 cd Aurore
 ```
 
-If the repository was cloned without submodules:
+For a specific tagged version, add `--branch v0.1.0-first-light` after the tag is published. If you cloned without dependencies:
 
 ```bash
 git submodule update --init --recursive
 ```
 
-Do not replace pinned dependency revisions with upstream branch heads as part of unrelated work.
+The two source dependencies are Sonnet (JSON) and GoogleTest. CMake builds them as part of the project. You do not need to configure them separately.
 
-## CMake presets
+## Configure, build, test
 
-`CMakePresets.json` is the shared developer and CI interface.
+The canonical entry points are the four CMake presets in `CMakePresets.json`:
 
-The current configure/build/test presets are:
+| Preset | Platform | Build configuration |
+|---|---|---|
+| `windows-debug` | Windows x64 | Debug |
+| `windows-release` | Windows x64 | Release |
+| `linux-debug` | Linux x86-64 | Debug |
+| `linux-release` | Linux x86-64 | Release |
 
-| Preset | Platform | Configuration | Network runtime |
-|---|---|---|---|
-| `windows-debug` | Windows x64 | Debug | IOCP |
-| `windows-release` | Windows x64 | Release | IOCP |
-| `linux-debug` | Linux x86-64 | Debug | epoll |
-| `linux-release` | Linux x86-64 | Release | epoll |
-
-Linux configures with `AURORE_ALLOW_MISSING_PLATFORM_BACKEND=OFF` and requires the native epoll backend. The missing-backend option remains available only as an explicit escape hatch for future platform-porting work.
-
-`CMakeUserPresets.json` is intentionally ignored and may be used for machine-local compiler paths or developer-specific preset inheritance.
-
-## Build and test
-
-### Linux
-
-Debug:
-
-```bash
-cmake --preset linux-debug
-cmake --build --preset linux-debug --parallel
-ctest --preset linux-debug
-```
-
-Release:
-
-```bash
-cmake --preset linux-release
-cmake --build --preset linux-release --parallel
-ctest --preset linux-release
-```
-
-The convenience wrapper performs the same sequence:
-
-```bash
-./scripts/build.sh Debug
-./scripts/build.sh Release
-```
-
-Tests may be skipped during local iteration:
-
-```bash
-./scripts/build.sh Debug --skip-tests
-```
-
-A review-ready change should still run the full suite.
-
-### Windows
-
-Debug:
+**Windows (PowerShell):**
 
 ```powershell
 cmake --preset windows-debug
 cmake --build --preset windows-debug --parallel
 ctest --preset windows-debug
-```
 
-Release:
-
-```powershell
 cmake --preset windows-release
 cmake --build --preset windows-release --parallel
 ctest --preset windows-release
 ```
 
-The PowerShell wrapper provides the same workflow:
+**Linux (shell):**
+
+```bash
+cmake --preset linux-debug
+cmake --build --preset linux-debug --parallel
+ctest --preset linux-debug
+
+cmake --preset linux-release
+cmake --build --preset linux-release --parallel
+ctest --preset linux-release
+```
+
+Wrappers are available for the same process:
 
 ```powershell
 ./scripts/build.ps1 -Configuration Debug
 ./scripts/build.ps1 -Configuration Release
-```
-
-For iteration only:
-
-```powershell
 ./scripts/build.ps1 -Configuration Debug -SkipTests
 ```
 
-The wrapper contains no independent project/dependency graph. CMake remains authoritative.
-
-## Build outputs
-
-Preset build trees live under:
-
-```text
-out/build/<preset>/
+```bash
+./scripts/build.sh Debug
+./scripts/build.sh Release
+./scripts/build.sh Debug --skip-tests
 ```
 
-Executables and shared runtime libraries are emitted under the preset's `bin/` directory, while static/import libraries are emitted under `lib/`.
+The scripts provide `-SkipTests` / `--skip-tests`, **not** a `-SkipDependencies` switch. CMake remains responsible for the dependency graph.
 
-For example:
+### Paths and CMake options
 
-```text
-out/build/linux-debug/bin/Aurore.Server
-out/build/linux-debug/bin/Aurore.Tests
-```
-
-Build trees, generated CMake state, local caches, and runtime configuration are ignored by Git.
-
-## Dependencies
-
-Aurore currently carries source dependencies as exact Git submodule revisions:
-
-- `vendor/Sonnet`
-- `vendor/googletest`
-
-The root CMake project adds these dependencies directly to the build graph. They are not expected to be independently configured or prebuilt by the developer.
-
-Sonnet tests/install rules are disabled for the Aurore build. GoogleTest participates only when `AURORE_BUILD_TESTS` is enabled.
-
-Dependency updates are intentional changes. A revision update should include:
-
-1. the new exact submodule revision;
-2. license/provenance review where necessary;
-3. successful Windows Debug/Release builds and tests;
-4. successful Linux Debug/Release builds and tests.
-
-See [Third-party notices](../THIRD_PARTY_NOTICES.md).
-
-## Platform and backend contract
-
-CMake interprets the target platform once and generates:
+Each preset builds into `out/build/<preset>/`; executables and shared libraries are placed in its `bin/` directory. For example:
 
 ```text
-Aurore/Build/Config.hpp
+out/build/windows-release/bin/Aurore.Server.exe
+out/build/linux-release/bin/Aurore.Server
+out/build/linux-release/bin/libsonnet.so
 ```
 
-inside the build tree.
+Actual shared-library filenames may vary by toolchain. `AURORE_BUILD_TESTS=ON` enables GoogleTest and the Aurore test executable. `AURORE_ALLOW_MISSING_PLATFORM_BACKEND=ON` is a **porting-only** escape hatch; do not use it for production server packages.
 
-Aurore-owned code uses that generated contract for supported platform/backend decisions rather than spreading compiler-specific platform detection throughout the codebase.
+`out/`, `cache/`, local-generated data, and test results are ignored by Git. They do not belong in commits or source archives.
 
-The current compile-time backend mapping is:
+## Run First Light
 
-```text
-Windows  -> IOCP
-Linux    -> epoll
-macOS    -> kqueue reserved for future work
+The production entry point is `Aurore.Server`. Run it from the directory that should contain the runtime data:
+
+```powershell
+# From the repository root, after a Windows Release build:
+./out/build/windows-release/bin/Aurore.Server.exe
 ```
-
-Production configurations are expected to have exactly one native network backend. The missing-backend build option exists only as an explicit porting escape hatch for platforms whose native backend is not yet implemented.
-
-When adding a backend:
-
-- keep OS-specific implementation files out of unrelated platform builds;
-- preserve the `NetworkBackend` observable lifecycle and queue/resource contracts;
-- keep Minecraft semantics out of `Aurore.Network`;
-- make `Automatic` select the native backend for that platform;
-- run shared transport tests against every real backend where practical.
-
-## Configuration
-
-The runtime reads:
-
-```text
-config/aurore.json
-```
-
-relative to its working directory.
-
-If the file does not exist, Core creates a default configuration automatically.
-
-Active settings are grouped primarily under `Network` and `Clients`; additional top-level areas reserve configuration ownership for their corresponding systems.
-
-Invalid setting types, invalid backend names, zero capacities, or otherwise inconsistent limits fail initialization rather than being silently coerced.
-
-On Linux, `Automatic` selects the native epoll backend. `Epoll` may also be selected explicitly in runtime configuration.
-
-## Tests
-
-The suite is divided by behavior rather than by project-file convenience.
-
-Current coverage includes:
-
-- byte-buffer and NBT primitives;
-- resource locations, UUID/data values, registries, tags, and snapshots;
-- packet framing and codecs;
-- protocol sessions, pipelines, Login, and Configuration behavior;
-- Core client lifecycle and data foundations;
-- platform-neutral network queues, resource accounting, configuration, and fake-backend lifecycle;
-- Windows IOCP backend internals;
-- shared real-socket loopback paths exercised against Windows IOCP and Linux epoll.
-
-Platform-neutral `NetworkTests.cpp`, native-backend lifecycle tests, and the shared real-socket loopback suite are built on both Windows and Linux. Only IOCP-internal tests remain Windows-specific; the loopback client itself has small platform-specific socket implementations behind one shared test contract.
-
-For a change:
-
-1. add or update the narrowest meaningful unit/component test;
-2. add a higher-layer regression when the defect crossed a subsystem boundary;
-3. run Debug and Release on the platform you are developing on;
-4. rely on CI to validate the other supported platform;
-5. preserve deterministic resource cleanup in transport and loopback tests.
-
-Manual vanilla-client interoperability runs are evidence, not a replacement for automated regression coverage.
-
-## Continuous integration
-
-`.github/workflows/ci.yml` runs on pushes and on pull requests targeting `main`.
-
-The current matrix validates:
-
-```text
-Windows x64 Debug
-Windows x64 Release
-Linux x86-64 Debug
-Linux x86-64 Release
-```
-
-Each job performs:
-
-```text
-configure
-   ↓
-build
-   ↓
-test
-```
-
-A configuration, compiler, linker, or test failure fails that matrix job.
-
-CI should remain structurally close to the documented local workflow. Avoid adding a second CI-only build path unless there is a concrete reason.
-
-## Adding or moving source files
-
-CMake is the only project-file source of truth.
-
-When adding or moving a source/header:
-
-1. update the owning subsystem's `CMakeLists.txt`;
-2. keep target dependencies consistent with [Architecture](ARCHITECTURE.md);
-3. do not add dependencies simply because another target happened to expose an include path;
-4. keep platform-specific source selection inside the owning subsystem's CMake file.
-
-There are no hand-maintained Visual Studio `.slnx` or `.vcxproj` files. Visual Studio consumes the CMake project instead.
-
-## Code style
-
-- Use PascalCase for types and functions and `m_` for members.
-- Use tabs for C++ indentation and spaces for CMake, JSON, Markdown, YAML, and PowerShell.
-- Put includes into subsystem, standard-library, and platform groups when that improves scanning.
-- Keep ownership explicit. Prefer values, references with clear lifetime, and move-only transfer over shared ownership.
-- Avoid deep inheritance and virtual dispatch unless runtime substitution is a real requirement.
-- Group related concepts into cohesive files rather than splitting every small type into its own pair.
-- Comment invariants, external constraints, and non-obvious choices rather than narrating individual lines.
-- Use `NDEBUG`/the standard `assert` contract for portable debug assertions rather than compiler-specific debug macros.
-
-`.editorconfig` records the mechanical portion of the style.
-
-## Starting from an exported source archive
-
-An ordinary source archive does not preserve live Git submodule metadata.
-
-When reconstructing a repository from an exported archive, initialize Git and restore the dependencies at the revisions documented by the repository:
 
 ```bash
-git init
-
-git submodule add \
-    https://github.com/ZettaBite4031/Sonnet.git \
-    vendor/Sonnet
-
-git submodule add \
-    https://github.com/google/googletest.git \
-    vendor/googletest
+# From the repository root, after a Linux Release build:
+./out/build/linux-release/bin/Aurore.Server
 ```
 
-Then check out the exact revisions recorded by the source package or `THIRD_PARTY_NOTICES.md`.
+Aurore uses the **current working directory** for `config/aurore.json` and the default `cache/minecraft/` location. A missing configuration file is created from built-in defaults.
 
-Do not silently replace those pins with current upstream heads.
+For isolated testing, launch from a separate directory or extract an official binary package there. Do not rely on the executable's directory being the working directory.
 
-## Review-ready checklist
+By default, the server uses TCP port **25565** and binds to **`0.0.0.0`**. If you're testing locally, change `Network.BindAddress` to `127.0.0.1`, then connect with an unmodified **Minecraft Java Edition 1.21.11** client. Don't expose this offline-mode proof of concept as an authenticated public server.
 
-Before considering a change ready to merge:
+### First-run Minecraft data preparation
 
-```text
-[ ] Correct subsystem owns the behavior
-[ ] New/changed source appears in the correct CMake target
-[ ] Platform-specific code is isolated from unrelated platforms
-[ ] Debug build passes
-[ ] Release build passes
-[ ] Relevant tests cover success and failure paths
-[ ] CI is green on Windows and Linux
-[ ] Generated output / local runtime data is not committed
-[ ] Public documentation matches any changed contract or workflow
+Aurore needs an official-source Minecraft 1.21.11 corpus to complete vanilla Configuration. On a normal first run, production startup:
+
+1. Resolves upstream version metadata and official server artifact identity.
+2. Downloads the required artifact separately on the user's machine when needed.
+3. Verifies its SHA-1 and runs the upstream data-generation process using Java.
+4. Validates and caches the generated reports and Minecraft data.
+5. Imports the corpus into Aurore's own immutable registry snapshot before accepting players.
+
+A valid cached generation can be reused on later starts. Java is not used to host Aurore itself, but a compatible Java installation is required for new upstream data generation. Install a Java runtime supported by the targeted Minecraft server artifact; see the official Minecraft requirements when setting up a new machine.
+
+To use a specific Java executable:
+
+```powershell
+$env:AURORE_JAVA_EXECUTABLE = 'C:\path\to\java.exe'
 ```
 
-For broader architectural expectations, read [Architecture](ARCHITECTURE.md) before introducing a new cross-layer dependency or abstraction.
+```bash
+export AURORE_JAVA_EXECUTABLE=/path/to/java
+```
+
+To bypass acquisition/generation using an existing prepared corpus, point to its **SHA-1-named generation root**, not merely its parent directory:
+
+```powershell
+$env:AURORE_MINECRAFT_DATA_ROOT = 'C:\cache\minecraft\generated\0123456789abcdef0123456789abcdef01234567'
+```
+
+```bash
+export AURORE_MINECRAFT_DATA_ROOT=/path/to/generated/0123456789abcdef0123456789abcdef01234567
+```
+
+The path must contain `reports/registries.json` and `data/minecraft/`. The hash shown is illustrative, not an actual known valid Minecraft artifact. Incorrect or incomplete data fails startup rather than silently proceeding.
+
+No Minecraft JAR, official assets, or generated game-data corpus should be committed or bundled into release archives. See [Protocol and Data](PROTOCOL_AND_DATA.md) and [Legal and Provenance](LEGAL_AND_PROVENANCE.md).
+
+## Runtime configuration
+
+The default runtime file is `config/aurore.json` relative to the working directory. The sample is tracked at `Aurore.Server/config/aurore.json`.
+
+| Section | First Light uses |
+|---|---|
+| `Server` | Display/server name |
+| `Network` | Backend selection, listening address/port, connection and queue byte limits |
+| `Clients` | Maximum connected clients, player cap, protocol timeouts |
+| `Logging` | Log activation and verbosity |
+| `World` | View-distance configuration placeholder; First Light still sends a fixed initial neighborhood |
+
+The native backend is selected using `Network.Backend: "Automatic"`; use `Iocp` on Windows or `Epoll` on Linux when selecting explicitly. Invalid backend names and inconsistent limit values fail configuration or initialization rather than being guessed at.
+
+Changing the view-distance setting does **not** enable general chunk streaming or world generation in First Light. The actual bootstrap is intentionally fixed.
+
+## Tests and diagnostics
+
+The suite spans byte/NBT primitives, UUIDs and registries, Protocol framing and state transitions, Configuration, Login, data acquisition/import, native backend internals, real-socket loopback, Play input, synchronization, timeouts, player lifecycle, and stress scenarios.
+
+Run all tests with `ctest --preset <name>` or the matching wrapper. The default suite covers the normal test workload; for extended session/reconnection stress:
+
+```powershell
+$env:AURORE_TEST_STRESS = '1'
+ctest --preset windows-release
+Remove-Item Env:AURORE_TEST_STRESS
+```
+
+```bash
+AURORE_TEST_STRESS=1 ctest --preset linux-release
+```
+
+The extended profile increases selected stress-test iteration counts. It does not replace manual vanilla-client testing or guarantee the absence of future regressions.
+
+When reporting a client interoperability issue, include the Aurore commit/tag, client version, last successful protocol stage, expected/observed behavior, minimal reproduction, and a redacted log. Never share account tokens, personal IP addresses, or private captures.
+
+## CI
+
+`.github/workflows/ci.yml` builds and tests the four supported preset configurations on pushes and pull requests. It also uploads short-lived build artifacts for diagnostic use. **Those workflow artifacts are not curated release packages.** Release files need their own staging, dependency review, and clean-machine checks; see [Releasing](RELEASING.md).
+
+## Source layout and style
+
+The individual `Aurore.*` directories contain subsystem-local CMake target declarations. Keep platform-specific sources selected by the owning CMake file. Public headers belong under `include/Aurore/<Subsystem>/`; implementations belong under `src/`.
+
+C++ uses PascalCase for types and functions, `m_` for member fields, and tabs for indentation. Leave comments for invariants and surprising reasoning, not a running commentary of straightforward code. The canonical formatting hints are in `.editorconfig`.
+
+Remember that `WorldManager` contains future-facing simulation phases that are still no-ops. A named function isn't proof that gameplay exists.
+
+## Troubleshooting
+
+- **Missing submodule/CMake target:** `git submodule update --init --recursive`.
+- **C++23 configure probe fails:** check both compiler and standard-library versions; in particular, chrono formatting support.
+- **Linux CURL not found:** install the distribution's libcurl development package (`libcurl4-openssl-dev` on Ubuntu/Debian).
+- **Server cannot start data preparation:** verify upstream connectivity, Java compatibility, cache write permissions, or the explicit existing corpus root.
+- **Connection fails or client disconnects on interaction:** verify exact client version and consult [First Light limitations](../README.md#what-is-not-implemented). Unsupported gameplay is expected in this milestone.
+- **Server binds to unintended interfaces:** change `Network.BindAddress` before launching, and verify firewall rules.
+
+For how the layers fit together, read [Architecture](ARCHITECTURE.md).
