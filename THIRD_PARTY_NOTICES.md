@@ -8,11 +8,7 @@ Aurore uses pinned source dependencies as Git submodules. This document records 
 - **Repository:** <https://github.com/ZettaBite4031/Sonnet>
 - **Submodule path:** `vendor/Sonnet`
 - **Reviewed pin:** `0d07d323cf27a71058d30552928b138847e5905c`
-- **License status at this reviewed pin:** No explicit license file was found in the repository tree.
-
-Sonnet's developer has stated the intention to apply an attribution-preserving permissive open-source license, preferably MIT. **Intent is not a substitute for a published license grant.** Before distributing First Light binaries that include Sonnet, add and commit an appropriate license in the Sonnet repository, update Aurore's submodule pin, and revise this notice to point to the actual license and final pin. Preserve the license text and any required notices in binary distributions.
-
-Until that is done, do not describe this specific Sonnet revision as MIT-licensed or assume redistribution permission has already been documented.
+- **License:** MIT License (see `vendor/Sonnet/LICENSE.txt`)
 
 ## GoogleTest
 
